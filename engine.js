@@ -20,7 +20,7 @@
   var VERSION = '0.1.0';
   var API_MAJOR = '1';                 // the JNN-API major version this code is written for
   var API_MIN = '1.1';                 // the oldest minor version it can use
-  var FALLBACK_SHA = '7867834';        // a JNN-stats release known to work, used if the latest is incompatible
+  var FALLBACK_SHA = '068c1ed';        // a JNN-stats release known to work, used if the latest is incompatible
   var STATS_CDN = 'https://cdn.jsdelivr.net/gh/mvhjim/18xx-jnnstats@';
   var REFRESH_MS = 10000;
   // Titles tested with JNN-Engine. Others are shown, but sending moves (in later versions) stays off.
