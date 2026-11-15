@@ -118,9 +118,17 @@
         };
         try { arr(c.$ipo_shares()).filter(function (s) { return call(s, 'buyable') !== false; }).forEach(function (s) { tryShare(s, os(g.$ipo_name(c)) || 'IPO'); }); } catch (e) {}
         try { arr(g.$share_pool().$shares_by_corporation()['$[]'](c)).forEach(function (s) { tryShare(s, 'market'); }); } catch (e) {}
+        try { if (!call(c, 'ipo_is_treasury?')) arr(call(c, 'treasury_shares')).filter(function (s) { return call(s, 'buyable') !== false; }).forEach(function (s) { tryShare(s, 'treasury'); }); } catch (e) {}
       });
+      // a company buying back (redeeming) its own shares
+      if (etype === 'corporation' && has(step, 'redeemable_shares')) {
+        try { arr(step.$redeemable_shares(entity)).forEach(function (b) { var h = base('buy_shares'); h.shares = arr(b.$shares()).map(function (x) { return os(x.$id()); }); h.percent = num(b.$percent()); add('Buy back shares', 'Buy back ' + h.percent + '% (' + money(b.$price()) + ')', h); }); } catch (e) {}
+      }
     }
-    if (can('sell_shares')) {
+    if (can('sell_shares') && etype === 'corporation' && has(step, 'issuable_shares')) {
+      // a company issuing its own shares
+      try { arr(step.$issuable_shares(entity)).forEach(function (b) { var h = base('sell_shares'); h.shares = arr(b.$shares()).map(function (x) { return os(x.$id()); }); h.percent = num(b.$percent()); var sp = num(call(b, 'share_price')); if (sp != null) h.share_price = sp; add('Issue shares', 'Issue ' + h.percent + '% (' + money(b.$price()) + ')', h); }); } catch (e) {}
+    } else if (can('sell_shares')) {
       g.$corporations().forEach(function (c) {
         var bundles = []; try { bundles = arr(has(step, 'sellable_bundles') ? step.$sellable_bundles(entity, c) : g.$sellable_bundles(entity, c)); } catch (e) {}
         bundles.forEach(function (b) {
