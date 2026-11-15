@@ -211,10 +211,13 @@
   function selfTest(J, text) {
     var raw = JSON.parse(text), eff = J.effectiveActions(raw), j0 = JSON.parse(text); j0.actions = []; j0.status = 'active'; delete j0.result;
     var g = J.loadGame(JSON.stringify(j0)), ok = 0, miss = [], n = 0, byType = {};
+    // two moves are the same if they buy or sell the same size of share of the same company from the same place,
+    // even when the engine picks a different certificate number
+    var shareKey = function (ids) { return (ids || []).map(function (id) { try { var sh = g.$share_by_id(id), own = sh.$owner(); return os(sh.$corporation().$id()) + ':' + num(sh.$percent()) + ':' + (own === g.$share_pool() ? 'm' : own === sh.$corporation() ? 'i' : 'o'); } catch (e) { return id; } }).sort().join(','); };
     var same = function (h, a) {
       if (h.type !== a.type || String(h.entity) !== String(a.entity)) return false;
       var keys = { buy_shares: ['shares'], sell_shares: ['shares'], par: ['corporation', 'share_price'], dividend: ['kind'], buy_train: ['train', 'variant'], bid: ['company', 'minor', 'corporation'], pass: [] }[h.type] || [];
-      return keys.every(function (k) { var x = h[k], y = a[k]; if (k === 'shares') return JSON.stringify((x || []).slice().sort()) === JSON.stringify((y || []).slice().sort()); if (k === 'variant' && (y == null || x === y)) return true; return x == null && y == null || String(x) === String(y); });
+      return keys.every(function (k) { var x = h[k], y = a[k]; if (k === 'shares') return shareKey(x) === shareKey(y); if (k === 'variant' && (y == null || x === y)) return true; return x == null && y == null || String(x) === String(y); });
     };
     eff.forEach(function (a) {
       if (SENDABLE.indexOf(a.type) >= 0 && a.type !== 'message') {
