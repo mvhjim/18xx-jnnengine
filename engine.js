@@ -18,12 +18,12 @@
  */
 (function () {
   'use strict';
-  var VERSION = '0.2.0';
+  var VERSION = '0.3.0';
   var API_MAJOR = '1';                 // the JNN-API major version this code is written for
   var API_MIN = '1.1';                 // the oldest minor version it can use
   var FALLBACK_SHA = '5c17e79';        // a JNN-stats release known to work, used if the latest is incompatible
   var STATS_CDN = 'https://cdn.jsdelivr.net/gh/mvhjim/18xx-jnnstats@';
-  var REFRESH_MS = 10000;
+  var REFRESH_MS = 60000;              // backup check only; new moves arrive through the site's own push channel
   // Titles tested with JNN-Engine. Others are shown, but sending moves (in later versions) stays off.
   var SUPPORTED = ['1846', '1862', 'The Old Prince 1871', '1849: Kingdom of the Two Sicilies'];
 
@@ -231,7 +231,11 @@
     };
     eff.forEach(function (a) {
       k++;
-      if (SENDABLE.indexOf(a.type) >= 0 && a.type !== 'message') {
+      if (a.type === 'lay_tile' || a.type === 'place_token') {
+        n++;
+        try { var why = mapCheck(g, g.$get(a.entity_type, a.entity), a); if (!why) ok++; else { byType[a.type] = (byType[a.type] || 0) + 1; if (miss.length < 12) miss.push(a.id + ' ' + a.type + ' ' + why + ' ' + JSON.stringify(a).slice(0, 120)); } }
+        catch (e) { byType[a.type] = (byType[a.type] || 0) + 1; if (miss.length < 12) miss.push(a.id + ' ' + a.type + ' error: ' + e.message); }
+      } else if (SENDABLE.indexOf(a.type) >= 0 && a.type !== 'message') {
         n++;
         try {
           var ent = g.$get(a.entity_type, a.entity), acts = arr(g.$round().$actions_for(ent)).map(os);
@@ -255,6 +259,147 @@
   E._moveOptions = moveOptions;
   E.selfTest = function (id) { return pickStats().then(loadStats).then(function (J) { return J.fetchGameText(id || gid).then(function (t) { var raw = JSON.parse(t); return J.ensureTitle(raw.title).then(function () { return selfTest(J, t); }); }); }); };
 
+  // ---------- Map moves (J4): tiles, stations, routes ------------------------------------------
+  var MAPACTS = ['lay_tile', 'place_token', 'run_routes'];
+  // a throwaway copy of the game for questions that change tiles (rotations) or run the auto-router
+  function qgame(J) { var n = E.game.raw.actions.length; if (!E.q || E.q.n !== n) E.q = { n: n, g: J.loadGame(JSON.stringify(E.game.raw)) }; return E.q.g; }
+  function curEntity(g) { try { return g.$round().$active_step().$current_entity(); } catch (e) { return null; } }
+  function stepFor(g, ent, act) { try { var st = g.$round().$step_for(ent, act); return nil(st) ? null : st; } catch (e) { return null; } }
+  function entJson(ent) { var id = os(call(ent, 'id')); return { entity: isNaN(+id) ? id : +id, entity_type: call(ent, 'player?') ? 'player' : call(ent, 'corporation?') ? 'corporation' : call(ent, 'minor?') ? 'minor' : 'company' }; }
+  function tileCities(hex) { var t = call(hex, 'tile'); return t ? arr(call(t, 'cities')) : []; }
+  // which hexes take a tile or a station now
+  function mapTargets(g, ent, acts) {
+    var out = {}, ts = acts.indexOf('lay_tile') >= 0 ? stepFor(g, ent, 'lay_tile') : null, tk = acts.indexOf('place_token') >= 0 ? stepFor(g, ent, 'place_token') : null;
+    arr(g.$hexes()).forEach(function (hex) {
+      var id = os(hex.$id()), k = '';
+      if (ts) { try { if (ts.$available_hex(ent, hex)) k += 't'; } catch (e) {} }
+      if (tk) { try { if (tk.$available_hex(ent, hex) && tileCities(hex).some(function (c) { try { return !!c['$tokenable?'](ent); } catch (e2) { return false; } })) k += 's'; } catch (e) {} }
+      if (k) out[id] = k;
+    });
+    return out;
+  }
+  // the legal tiles (with their legal rotations) and station spots of one hex, as options
+  function hexOptions(g, ent, hexId, kinds) {
+    var hex = g.$hex_by_id(hexId), out = [], ej = entJson(ent), money = function (v) { try { return os(g.$format_currency(v)); } catch (e) { return String(v); } };
+    if (kinds.indexOf('t') >= 0) {
+      var ts = stepFor(g, ent, 'lay_tile'), tiles = [];
+      try { tiles = arr(ts.$upgradeable_tiles(ent, hex)); } catch (e) {}
+      tiles.forEach(function (tile) {
+        var rots = arr(call(tile, 'legal_rotations')).map(num);
+        rots.forEach(function (r) {
+          var h = { type: 'lay_tile', entity: ej.entity, entity_type: ej.entity_type, hex: hexId, tile: os(tile.$id()), rotation: r };
+          out.push({ group: 'Tile on ' + hexId, label: 'Tile ' + os(tile.$name()) + ', rotation ' + (rots.indexOf(r) + 1) + ' of ' + rots.length, h: h, svg: tileSvg(tile, r, os(call(hex, 'layout')) || 'flat') });
+        });
+      });
+    }
+    if (kinds.indexOf('s') >= 0) {
+      var tk = stepFor(g, ent, 'place_token'), toks = []; try { toks = arr(tk.$available_tokens(ent)); } catch (e) {}
+      var owner = null; try { owner = g.$token_owner(ent); } catch (e) {}
+      tileCities(hex).forEach(function (c, ci) {
+        try { if (!c['$tokenable?'](ent)) return; } catch (e) { return; }
+        var slot = 0; try { slot = arr(c.$tokens()).findIndex(function (x) { return nil(x); }); } catch (e) {} if (slot < 0) slot = 0;
+        var h = { type: 'place_token', entity: ej.entity, entity_type: ej.entity_type, city: os(c.$id()), slot: slot };
+        if (owner) h.tokener = os(owner.$id());
+        var tt = toks[0] ? os(call(toks[0], 'type')) : ''; if (tt && tt !== 'normal') h.token_type = tt;
+        var name = os(call(hex, 'location_name')) || hexId;
+        out.push({ group: 'Station on ' + hexId, label: 'Place a station in ' + name + (tileCities(hex).length > 1 ? ' (city ' + (ci + 1) + ')' : ''), h: h });
+      });
+    }
+    return out;
+  }
+  // a small drawing of a tile at a rotation, from the engine's track data (drawn here, not copied from the site)
+  function tileSvg(tile, rot, layout) {
+    try { tile['$rotate!'](rot); } catch (e) {}
+    var col = { yellow: '#f2d25a', green: '#6dbb4b', brown: '#c47a45', gray: '#b9b9b9', grey: '#b9b9b9', white: '#f4f1e8', blue: '#7fb2dd' }[os(call(tile, 'color'))] || '#ddd';
+    var E87 = 86.6, ep = function (e) { var a = e * Math.PI / 3; return [(-Math.sin(a) * E87).toFixed(1), (Math.cos(a) * E87).toFixed(1)]; };
+    var lines = [], nodes = [], pts = '100,0 50,86.6 -50,86.6 -100,0 -50,-86.6 50,-86.6';
+    arr(call(tile, 'paths')).forEach(function (p) {
+      var ex = arr(call(p, 'exits')).map(num);
+      if (ex.length >= 2) { var a = ep(ex[0]), b = ep(ex[1]); lines.push('M' + a[0] + ' ' + a[1] + ' Q0 0 ' + b[0] + ' ' + b[1]); }
+      else if (ex.length === 1) { var a2 = ep(ex[0]); lines.push('M' + a2[0] + ' ' + a2[1] + ' L0 0'); }
+    });
+    arr(call(tile, 'cities')).forEach(function () { nodes.push('<circle r="24" fill="#fff" stroke="#000" stroke-width="4"/>'); });
+    if (!nodes.length) arr(call(tile, 'towns')).forEach(function () { nodes.push('<circle r="11" fill="#000"/>'); });
+    return '<svg viewBox="-110 -100 220 200" width="74" height="68"><g transform="' + (layout === 'pointy' ? 'rotate(30)' : '') + '"><polygon points="' + pts + '" fill="' + col + '" stroke="#555" stroke-width="3"/>' +
+      lines.map(function (l) { return '<path d="' + l + '" stroke="#000" stroke-width="13" fill="none"/>'; }).join('') + nodes.slice(0, 1).join('') + '</g>' +
+      '<text x="-100" y="96" font-size="30" fill="var(--text-secondary)">' + esc(os(call(tile, 'name'))) + '</text></svg>';
+  }
+  // the board with the hexes you can click outlined
+  function mapPicker(J, d, targets) {
+    var svg = J.boardSvg(d, null, [], 1400), P = J.hexPositions(d, 26), u = 26, flat = P.flat, ov = [];
+    var poly = function (cx, cy, r) { var q = []; for (var a = 0; a < 6; a++) { var rad = ((flat ? 0 : 30) + a * 60) * Math.PI / 180; q.push((cx + r * Math.cos(rad)).toFixed(1) + ',' + (cy + r * Math.sin(rad)).toFixed(1)); } return q.join(' '); };
+    Object.keys(targets).forEach(function (id) { var c = P.pos[id]; if (!c) return; ov.push('<polygon class="hx' + (E.selHex === id ? ' sel' : '') + '" data-hex="' + esc(id) + '" data-k="' + targets[id] + '" points="' + poly(c[0], c[1], u - 2) + '"><title>' + esc(id + (targets[id].indexOf('t') >= 0 ? ': tile' : '') + (targets[id].indexOf('s') >= 0 ? ': station' : '')) + '</title></polygon>'); });
+    return svg.replace(/<\/svg>\s*$/, ov.join('') + '</svg>');
+  }
+  // routes: the site's own auto-router, on a copy
+  function findRoutes(J, done) {
+    var g = J.loadGame(JSON.stringify(E.game.raw)), ent = curEntity(g), finished = false;
+    var stop = setTimeout(function () { if (!finished) { finished = true; done(null, 'the route search took too long'); } }, 45000);
+    try {
+      var router = Opal.Engine.AutoRouter.$new(g);
+      router.$compute(ent, Opal.hash({ route_timeout: 10, path_timeout: 30, callback: function (routes) {
+        if (finished) return; finished = true; clearTimeout(stop);
+        try {
+          routes = arr(routes); var extra = null, sub = null; try { extra = g.$extra_revenue(ent, routes); } catch (e) {} try { sub = g.$routes_subsidy(routes); } catch (e) {}
+          var args = { routes: routes }; if (!nil(extra) && extra != null) args.extra_revenue = extra; if (!nil(sub) && sub != null) args.subsidy = sub;
+          var act = Opal.Engine.Action.RunRoutes.$new(ent, Opal.hash(args)), h = act.$to_h().$to_n();
+          delete h.id; delete h.created_at; delete h.user;
+          var list = routes.map(function (r) { return { train: os(r.$train().$name()), rev: num(r.$revenue()), stops: arr(r.$hexes()).map(function (x) { return os(x.$id()); }) }; });
+          done({ h: h, list: list, total: num(g.$routes_revenue(routes)) });
+        } catch (e) { done(null, e.message || String(e)); }
+      } }));
+    } catch (e) { finished = true; clearTimeout(stop); done(null, e.message || String(e)); }
+  }
+  function mapMovesHtml(J, d, acts) {
+    var ma = MAPACTS.filter(function (a) { return acts.indexOf(a) >= 0; }); if (!ma.length) return '';
+    var g = qgame(J), ent = curEntity(g); if (!ent) return '';
+    var h = '';
+    if (ma.indexOf('lay_tile') >= 0 || ma.indexOf('place_token') >= 0) {
+      var targets = {}; try { targets = mapTargets(g, ent, acts); } catch (e) {}
+      var n = Object.keys(targets).length;
+      h += '<div class="mg"><div class="mgh">' + (ma.indexOf('lay_tile') >= 0 ? 'Lay a tile' : '') + (ma.indexOf('lay_tile') >= 0 && ma.indexOf('place_token') >= 0 ? ' or ' : '') + (ma.indexOf('place_token') >= 0 ? 'place a station' : '') + ': ' + (n ? 'pick one of the ' + n + ' outlined hexes on the board' : 'no hex is available') + '</div><div class="pick">' + mapPicker(J, d, targets) + '</div><div id="hexopts"></div></div>';
+      E.targets = targets;
+    }
+    if (ma.indexOf('run_routes') >= 0) h += '<div class="mg"><div class="mgh">Run trains</div><button class="pill" id="rr-find">Find the best routes</button> <span class="note">uses the site\'s own auto-router; to draw routes by hand, use the 18xx.games page</span><div id="rr-out"></div></div>';
+    return h;
+  }
+  function showHexOptions(J, hexId) {
+    var doc = w.document, box = doc.getElementById('hexopts'); if (!box) return;
+    E.selHex = hexId; Array.prototype.forEach.call(doc.querySelectorAll('.hx'), function (p) { p.classList.toggle('sel', p.getAttribute('data-hex') === hexId); });
+    var g = qgame(J), ent = curEntity(g), opts = [];
+    try { opts = hexOptions(g, ent, hexId, E.targets[hexId] || ''); } catch (e) { box.innerHTML = '<p class="note">Could not read the choices: ' + esc(e.message) + '</p>'; return; }
+    if (!opts.length) { box.innerHTML = '<p class="note">Nothing can be placed on ' + esc(hexId) + ' now.</p>'; return; }
+    var base = E.opts.length; opts.forEach(function (o) { E.opts.push(o); });
+    box.innerHTML = '<div class="mgh">' + esc(hexId) + '</div><div class="tiles">' + opts.map(function (o, k) { return o.svg ? '<button class="tilebtn mv" data-i="' + (base + k) + '" title="' + esc(o.label) + '">' + o.svg + '</button>' : '<button class="pill mv" data-i="' + (base + k) + '">' + esc(o.label) + '</button>'; }).join('') + '</div>';
+  }
+  function runRoutesUi(J) {
+    var doc = w.document, out = doc.getElementById('rr-out'), b = doc.getElementById('rr-find'); if (!out) return;
+    b.disabled = true; b.textContent = 'Searching…'; out.innerHTML = '<p class="note">The auto-router is looking for the best routes (up to about 30 seconds)…</p>';
+    setTimeout(function () {
+      findRoutes(J, function (r, err) {
+        b.disabled = false; b.textContent = 'Find the best routes again';
+        if (!r) { out.innerHTML = '<p class="bad">' + esc(err) + '</p>'; return; }
+        var i = E.opts.length; E.opts.push({ group: 'Run trains', label: 'Run these routes (' + r.total + ')', h: r.h });
+        out.innerHTML = '<ul>' + r.list.map(function (x) { return '<li><b>' + esc(x.train) + '</b>: ' + esc(x.stops.join('–')) + ' = ' + esc(String(x.rev)) + '</li>'; }).join('') + '</ul><button class="pill mv" data-i="' + i + '">Run these routes (total ' + esc(String(r.total)) + ')</button>';
+      });
+    }, 30);
+  }
+  // self-test for map moves: was the real tile (and rotation) or station among those offered?
+  function mapCheck(g, ent, a) {
+    var acts = arr(g.$round().$actions_for(ent)).map(os);
+    if (a.type === 'lay_tile') {
+      var t = mapTargets(g, ent, acts); if (!t[a.hex] || t[a.hex].indexOf('t') < 0) return 'hex not offered';
+      var o = hexOptions(g, ent, a.hex, 't'); return o.some(function (x) { return x.h.tile === a.tile && +x.h.rotation === +a.rotation; }) ? '' : 'tile/rotation not offered';
+    }
+    if (a.type === 'place_token') {
+      var t2 = mapTargets(g, ent, acts), hexId = null;
+      Object.keys(t2).forEach(function (id) { tileCities(g.$hex_by_id(id)).forEach(function (c) { if (os(c.$id()) === String(a.city)) hexId = id; }); });
+      if (!hexId) return 'city not offered';
+      return hexOptions(g, ent, hexId, 's').some(function (x) { return x.h.city === String(a.city); }) ? '' : 'station not offered';
+    }
+    return '';
+  }
+
   // the move panel and the confirmation
   function movesHtml(d, t, me, myTurn, sup) {
     var gm = E.game, g = gm.g, step = g.$round().$active_step(), ent = null; try { ent = step.$current_entity(); } catch (e) {}
@@ -262,12 +407,13 @@
     var acts = []; try { acts = arr(g.$round().$actions_for(ent)).map(os); } catch (e) { try { acts = arr(step.$actions(ent)).map(os); } catch (e2) {} }
     var opts = []; try { opts = moveOptions(g, ent, acts); } catch (e) { return '<p class="note">Could not read the choices: ' + esc(e.message) + '</p>'; }
     E.opts = opts;
-    var other = acts.filter(function (a) { return SENDABLE.indexOf(a) < 0 && ['end_game', 'message', 'undo', 'redo', 'log', 'bankrupt'].indexOf(a) < 0 && !/^program_/.test(a); });
+    var other = acts.filter(function (a) { return SENDABLE.indexOf(a) < 0 && MAPACTS.indexOf(a) < 0 && ['end_game', 'message', 'undo', 'redo', 'log', 'bankrupt'].indexOf(a) < 0 && !/^program_/.test(a); });
     var groups = []; opts.forEach(function (o, i) { var gr = groups.filter(function (x) { return x.name === o.group; })[0]; if (!gr) { gr = { name: o.group, items: [] }; groups.push(gr); } gr.items.push(i); });
     var h = groups.map(function (gr) {
       return '<div class="mg"><div class="mgh">' + esc(gr.name) + '</div>' + gr.items.map(function (i) { var o = opts[i];
         return '<span class="mo">' + (o.amount ? '<input type="number" class="amt" data-i="' + i + '" min="' + o.amount.min + '" max="' + o.amount.max + '" value="' + o.amount.min + '">' : '') + '<button class="pill mv" data-i="' + i + '">' + esc(o.label) + '</button></span>'; }).join('') + '</div>';
     }).join('');
+    try { h += mapMovesHtml(E.J, d, acts); } catch (eM) { h += '<p class="note">Could not read the map choices: ' + esc(eM.message) + '</p>'; }
     if (other.length) h += '<p class="note">Also possible now, but not in JNN-Engine yet (use the 18xx.games page): ' + other.map(function (a) { return esc(a.replace(/_/g, ' ')); }).join(', ') + '.</p>';
     var u = pageUser(), mode = !sup ? 'This title is not tested with JNN-Engine: you can try moves here, but they are never sent.' : !sendOn() ? 'Test mode: moves are checked on a copy of the game and shown, but not sent. Switch sending on above when you are ready.' : !u ? 'You are not logged in on this page, so moves are not sent.' : 'Sending is on: a move is sent to 18xx.games only after you confirm it.';
     return (h || '<p class="note">Nothing JNN-Engine can do in this step yet; use the 18xx.games page.</p>') + '<p class="note">' + esc(mode) + '</p>';
@@ -315,7 +461,9 @@
     '.mg{margin:6px 0}.mgh{font-size:11.5px;color:var(--text-secondary);margin-bottom:3px}.mo{display:inline-flex;gap:4px;margin:0 6px 6px 0;align-items:center}.amt{width:80px;padding:3px 5px;border-radius:6px;border:1px solid var(--grid);background:var(--surface-1);color:var(--text-primary)}',
     '#cbox{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:flex-start;justify-content:center;z-index:50;padding-top:8vh}.cb{background:var(--surface-1);border:1px solid var(--grid);border-radius:12px;padding:14px 18px;max-width:560px;width:92%;max-height:80vh;overflow:auto;box-shadow:0 10px 30px rgba(0,0,0,.35)}',
     '.cb h3{margin:0 0 8px}.cb pre{font-size:11px;white-space:pre-wrap}.cbb{display:flex;gap:8px;justify-content:flex-end;margin-top:8px}.go{background:var(--accent)!important;color:#fff!important}.bad{color:#d9534f}',
-    '.sendsw{cursor:pointer;margin-left:6px}.sendsw.on{background:#2e9e5b;color:#fff}'
+    '.sendsw{cursor:pointer;margin-left:6px}.sendsw.on{background:#2e9e5b;color:#fff}',
+    '.pick svg{width:100%;height:auto}.hx{fill:rgba(57,135,229,.18);stroke:#3987e5;stroke-width:2.2;cursor:pointer}.hx:hover{fill:rgba(57,135,229,.38)}.hx.sel{fill:rgba(46,158,91,.4);stroke:#2e9e5b;stroke-width:3}',
+    '.tiles{display:flex;flex-wrap:wrap;gap:6px}.tilebtn{background:var(--surface-0);border:1px solid var(--grid);border-radius:8px;padding:2px;cursor:pointer}.tilebtn:hover{border-color:var(--accent)}'
   ].join('\n');
   var ACT = { pass: 'Pass', bid: 'Bid', par: 'Start a company', buy_shares: 'Buy shares', sell_shares: 'Sell shares', lay_tile: 'Lay a tile', place_token: 'Place a station',
     run_routes: 'Run trains', dividend: 'Pay out or withhold', buy_train: 'Buy a train', buy_company: 'Buy a private', discard_train: 'Discard a train', bankrupt: 'Go bankrupt',
@@ -372,6 +520,8 @@
     w.scrollTo(0, y);
     doc.body.onclick = function (ev) {
       var b = ev.target.closest && ev.target.closest('button.mv'); if (b) { confirmBox(J, +b.getAttribute('data-i')); return; }
+      var hx = ev.target.closest && ev.target.closest('.hx'); if (hx) { showHexOptions(J, hx.getAttribute('data-hex')); return; }
+      if (ev.target.id === 'rr-find') { runRoutesUi(J); return; }
       if (ev.target.id === 'sendsw') {
         if (!sendOn()) {
           if (!w.confirm('Switch sending on?\n\nWhen on, a move you confirm in JNN-Engine is sent to 18xx.games as you, exactly as if you had made it on the site. Every move is checked on a copy of the game first. You can switch it off again at any time.')) return;
@@ -396,5 +546,26 @@
   status('JNN-Engine is loading the game…');
   E.drawn = false; E.game = null;
   cycle(true);
-  E.timer = setInterval(function () { cycle(false); }, REFRESH_MS);
+  // New moves arrive through the site's own push channel (the page already listens to it), so no extra
+  // requests are needed; a full fetch happens only when something does not line up, plus a slow backup check.
+  function onBus(msg) {
+    try {
+      var a = msg && (msg.type ? msg : null); if (!a || !E.game || !E.J) { later(); return; }
+      var last = E.game.raw.actions.length ? E.game.raw.actions[E.game.raw.actions.length - 1].id : 0;
+      if (a.id === last + 1 && a.type !== 'undo' && a.type !== 'redo' && E.J.applyActions(E.game.g, [a])) { E.game.raw.actions.push(a); E.q = null; draw(E.J); }
+      else later();
+    } catch (e) { later(); }
+  }
+  var laterT = null; function later() { if (laterT) return; laterT = setTimeout(function () { laterT = null; cycle(true); }, 1500); }
+  function subscribe() {
+    var MB = window.MessageBus; if (!MB || !MB.subscribe) return;
+    if (E.subFn && (MB.callbacks || []).some(function (c) { return c.func === E.subFn; })) return;
+    try {
+      var ch = '/game/' + gid, last = -1; (MB.callbacks || []).forEach(function (c) { if (c.channel === ch && c.last_id != null) last = c.last_id; });
+      if (E.subFn) { try { MB.unsubscribe(ch, E.subFn); } catch (e) {} }
+      E.subFn = function (m2) { onBus(m2); }; MB.subscribe(ch, E.subFn, last);
+    } catch (e) {}
+  }
+  subscribe();
+  E.timer = setInterval(function () { subscribe(); cycle(false); }, REFRESH_MS);
 })();
