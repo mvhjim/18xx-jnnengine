@@ -90,8 +90,9 @@
   // then tried on a copy of the game before anything is sent.
   function nil(o) { return o == null || o === Opal.nil; }
   function os(o) { return nil(o) ? '' : String(o); }
-  function call(o, m) { var a = Array.prototype.slice.call(arguments, 2); if (nil(o)) return null; var f = o['$' + m]; if (typeof f !== 'function') return null; var r = f.apply(o, a); return nil(r) ? null : r; }
-  function has(o, m) { return !nil(o) && typeof o['$' + m] === 'function'; }
+  // Opal defines a stub for every method name on every object, so ask the object itself (respond_to?)
+  function has(o, m) { if (nil(o)) return false; try { if (typeof o['$respond_to?'] === 'function') return !!o['$respond_to?'](m); } catch (e) {} return typeof o['$' + m] === 'function'; }
+  function call(o, m) { var a = Array.prototype.slice.call(arguments, 2); if (!has(o, m)) return null; try { var r = o['$' + m].apply(o, a); return nil(r) ? null : r; } catch (e) { return null; } }
   function arr(o) { if (nil(o)) return []; if (Array.isArray(o)) return o; if (has(o, 'to_a')) return o.$to_a(); return []; }
   function num(o) { var v = nil(o) ? null : Number(o); return v == null || isNaN(v) ? null : v; }
   function hget(h, k) { if (nil(h)) return null; try { var v = h['$[]'](k); if (nil(v) && Opal.Symbol) v = null; return nil(v) ? null : v; } catch (e) { return null; } }
@@ -174,7 +175,7 @@
           add('Bid', 'Bid on ' + os(co.$name()) + ' (at least ' + money(min) + ')', h, { key: 'price', min: min, max: max != null ? max : min });
         } else {
           // a draft: take the company at its own price
-          var pr = num(call(co, 'min_bid')); if (pr == null) pr = num(call(co, 'value')); if (pr == null) pr = 0; h.price = pr;
+          var pr = num(call(co, 'value')); if (pr == null) pr = 0; h.price = pr;
           add('Take a company', 'Take ' + os(co.$name()) + (pr ? ' (' + money(pr) + ')' : ''), h);
         }
       });
