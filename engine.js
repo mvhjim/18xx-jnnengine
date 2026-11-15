@@ -167,10 +167,16 @@
     if (can('bid')) {
       var cos = []; try { cos = arr(has(step, 'available') ? step.$available() : (has(step, 'companies') ? step.$companies() : [])); } catch (e) {}
       cos.forEach(function (co) {
-        var min = null, max = null; try { min = num(step.$min_bid(co)); } catch (e) {} try { max = num(step.$max_bid(entity, co)); } catch (e) {}
-        if (min == null) return;
-        var h = base('bid'), tp = call(co, 'company?') ? 'company' : call(co, 'minor?') ? 'minor' : 'corporation'; h[tp] = os(co.$id()); h.price = min;
-        add('Bid', 'Bid on ' + os(co.$name()) + ' (at least ' + money(min) + ')', h, { key: 'price', min: min, max: max != null ? max : min });
+        var tp = call(co, 'company?') ? 'company' : call(co, 'minor?') ? 'minor' : 'corporation', h = base('bid'); h[tp] = os(co.$id());
+        if (has(step, 'min_bid')) {
+          var min = null, max = null; try { min = num(step.$min_bid(co)); } catch (e) {} try { max = num(step.$max_bid(entity, co)); } catch (e) {}
+          if (min == null) return; h.price = min;
+          add('Bid', 'Bid on ' + os(co.$name()) + ' (at least ' + money(min) + ')', h, { key: 'price', min: min, max: max != null ? max : min });
+        } else {
+          // a draft: take the company at its own price
+          var pr = num(call(co, 'min_bid')); if (pr == null) pr = num(call(co, 'value')); if (pr == null) pr = 0; h.price = pr;
+          add('Take a company', 'Take ' + os(co.$name()) + (pr ? ' (' + money(pr) + ')' : ''), h);
+        }
       });
     }
     return out;
