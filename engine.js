@@ -21,7 +21,7 @@
   var VERSION = '0.2.0';
   var API_MAJOR = '1';                 // the JNN-API major version this code is written for
   var API_MIN = '1.1';                 // the oldest minor version it can use
-  var FALLBACK_SHA = '068c1ed';        // a JNN-stats release known to work, used if the latest is incompatible
+  var FALLBACK_SHA = '5c17e79';        // a JNN-stats release known to work, used if the latest is incompatible
   var STATS_CDN = 'https://cdn.jsdelivr.net/gh/mvhjim/18xx-jnnstats@';
   var REFRESH_MS = 10000;
   // Titles tested with JNN-Engine. Others are shown, but sending moves (in later versions) stays off.
@@ -49,7 +49,7 @@
   // 1. Which JNN-stats release to use: the latest, if its API fits; otherwise the known-good one
   function pickStats() {
     if (E.statsSha) return Promise.resolve(E.statsSha);
-    if (window.__jnnStatsShaOverride) return Promise.resolve(E.statsSha = window.__jnnStatsShaOverride);
+    if (window.__jnnStatsShaOverride && /^[0-9a-f]{7,40}$/.test(window.__jnnStatsShaOverride)) return Promise.resolve(E.statsSha = window.__jnnStatsShaOverride);
     return loadScript(STATS_CDN + 'main/version.js?t=' + Date.now()).then(function () {
       E.statsLatest = window.__xxLatest; E.statsApi = window.__xxApi;
       var fits = apiOk(window.__xxApi) && !!window.__xxSha;
