@@ -218,7 +218,7 @@
   // Self-test: walk through a finished game and check that every move of a supported kind was among the options offered
   function selfTest(J, text) {
     var raw = JSON.parse(text), eff = J.effectiveActions(raw), j0 = JSON.parse(text); j0.actions = []; j0.status = 'active'; delete j0.result;
-    var g = J.loadGame(JSON.stringify(j0)), ok = 0, miss = [], n = 0, byType = {};
+    var g = J.loadGame(JSON.stringify(j0)), ok = 0, miss = [], n = 0, byType = {}, checks = [], k = -1;
     // two moves are the same if they buy or sell the same size of share of the same company from the same place,
     // even when the engine picks a different certificate number
     var shareKey = function (ids) { return (ids || []).map(function (id) { try { var sh = g.$share_by_id(id), own = sh.$owner(); return os(sh.$corporation().$id()) + ':' + num(sh.$percent()) + ':' + (own === g.$share_pool() ? 'm' : own === sh.$corporation() ? 'i' : 'o'); } catch (e) { return id; } }).sort().join(','); };
@@ -228,17 +228,27 @@
       return keys.every(function (k) { var x = h[k], y = a[k]; if (k === 'shares') return shareKey(x) === shareKey(y); if (k === 'variant' && (y == null || x === y)) return true; return x == null && y == null || String(x) === String(y); });
     };
     eff.forEach(function (a) {
+      k++;
       if (SENDABLE.indexOf(a.type) >= 0 && a.type !== 'message') {
         n++;
         try {
           var ent = g.$get(a.entity_type, a.entity), acts = arr(g.$round().$actions_for(ent)).map(os);
-          var found = moveOptions(g, ent, acts).some(function (o) { return same(o.h, a); });
+          var match = moveOptions(g, ent, acts).filter(function (o) { return same(o.h, a); })[0], found = !!match;
+          if (found && checks.length < 10 && n % 15 === 1) checks.push({ k: k, h: match.h, a: a });
           if (found) ok++; else byType[a.type] = (byType[a.type] || 0) + 1; if (!found && miss.length < 12) miss.push(a.id + ' ' + a.type + ' ' + JSON.stringify(a).slice(0, 160));
         } catch (e) { byType[a.type] = (byType[a.type] || 0) + 1; if (miss.length < 12) miss.push(a.id + ' ' + a.type + ' error: ' + e.message); }
       }
       g = g.$process_action(Opal.JSON.$parse(JSON.stringify(a)));
     });
-    return { title: raw.title, moves: n, found: ok, missingByType: byType, missing: miss };
+    // replay a sample both ways: the move JNN-Engine builds must do exactly what the real move did
+    var same2 = 0, diff = [];
+    checks.forEach(function (c) {
+      var jt = JSON.parse(text); jt.actions = eff.slice(0, c.k); jt.status = 'active'; delete jt.result; var t2 = JSON.stringify(jt);
+      var real = {}; Object.keys(c.a).forEach(function (x) { if (['id', 'user', 'created_at', 'auto_actions'].indexOf(x) < 0) real[x] = c.a[x]; });
+      try { var r1 = dryRun(J, t2, c.h), r2 = dryRun(J, t2, real); if (JSON.stringify(r1.log) === JSON.stringify(r2.log)) same2++; else diff.push(c.a.id + ': ' + r1.log.join(' / ') + ' ≠ ' + r2.log.join(' / ')); }
+      catch (e) { diff.push(c.a.id + ': ' + e.message); }
+    });
+    return { title: raw.title, moves: n, found: ok, missingByType: byType, missing: miss, replayed: same2 + '/' + checks.length, replayDiffs: diff };
   }
   E._moveOptions = moveOptions;
   E.selfTest = function (id) { return pickStats().then(loadStats).then(function (J) { return J.fetchGameText(id || gid).then(function (t) { var raw = JSON.parse(t); return J.ensureTitle(raw.title).then(function () { return selfTest(J, t); }); }); }); };
