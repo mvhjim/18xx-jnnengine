@@ -89,6 +89,7 @@
   // Every choice is asked from the site's own rules engine, the same way the 18xx.games page does,
   // then tried on a copy of the game before anything is sent.
   function nil(o) { return o == null || o === Opal.nil; }
+  function truthy(o) { return !(o == null || o === false || o === Opal.nil); } // Ruby truth: only nil and false are false
   function os(o) { return nil(o) ? '' : String(o); }
   // Opal defines a stub for every method name on every object, so ask the object itself (respond_to?)
   function has(o, m) { if (nil(o)) return false; try { if (typeof o['$respond_to?'] === 'function') return !!o['$respond_to?'](m); } catch (e) {} return typeof o['$' + m] === 'function'; }
@@ -99,7 +100,7 @@
   var SENDABLE = ['pass', 'bid', 'par', 'buy_shares', 'sell_shares', 'dividend', 'buy_train'];
   // the options for one entity in the current step; each is { group, label, h: action JSON (without id), amount?: {min, max, key} }
   function moveOptions(g, entity, acts) {
-    var out = [], round = g.$round(), active = round.$active_step(), step = active, id = os(call(entity, 'id')), etype = call(entity, 'player?') ? 'player' : call(entity, 'corporation?') ? 'corporation' : call(entity, 'minor?') ? 'minor' : call(entity, 'company?') ? 'company' : 'player';
+    var out = [], round = g.$round(), active = round.$active_step(), step = active, id = os(call(entity, 'id')), etype = truthy(call(entity, 'player?')) ? 'player' : truthy(call(entity, 'corporation?')) ? 'corporation' : truthy(call(entity, 'minor?')) ? 'minor' : call(entity, 'company?') ? 'company' : 'player';
     var base = function (type) { return { type: type, entity: isNaN(+id) ? id : +id, entity_type: etype }; };
     var money = function (v) { try { return os(g.$format_currency(v)); } catch (e) { return String(v); } };
     var add = function (group, label, h, amount) { out.push({ group: group, label: label, h: h, amount: amount || null }); };
@@ -108,19 +109,19 @@
     if (can('buy_shares')) {
       g.$corporations().forEach(function (c) {
         // like the site: shares are offered only for companies that have been started (a new company is started with "Start a company")
-        if (!call(c, 'ipoed') && !call(c, 'floated?')) return;
+        if (!truthy(call(c, 'ipoed')) && !truthy(call(c, 'floated?'))) return;
         var cn = os(c.$name()), seen = {};
         var tryShare = function (sh, src) {
           if (nil(sh)) return; var b = sh.$to_bundle(), pct = num(b.$percent()), key = src + pct;
           if (seen[key]) return;
-          try { if (!step['$can_buy?'](entity, b)) return; } catch (e) { return; }
+          try { if (!truthy(step['$can_buy?'](entity, b))) return; } catch (e) { return; }
           seen[key] = 1;
           var h = base('buy_shares'); h.shares = [os(sh.$id())]; h.percent = pct; h.share_price = num(call(b, 'share_price')) || undefined;
           add('Buy shares', 'Buy ' + pct + '% of ' + cn + ' from the ' + src + ' (' + money(b.$price()) + ')', h);
         };
         try { arr(c.$ipo_shares()).filter(function (s) { return call(s, 'buyable') !== false; }).forEach(function (s) { tryShare(s, os(g.$ipo_name(c)) || 'IPO'); }); } catch (e) {}
         try { arr(g.$share_pool().$shares_by_corporation()['$[]'](c)).forEach(function (s) { tryShare(s, 'market'); }); } catch (e) {}
-        try { if (!call(c, 'ipo_is_treasury?')) arr(call(c, 'treasury_shares')).filter(function (s) { return call(s, 'buyable') !== false; }).forEach(function (s) { tryShare(s, 'treasury'); }); } catch (e) {}
+        try { if (!truthy(call(c, 'ipo_is_treasury?'))) arr(call(c, 'treasury_shares')).filter(function (s) { return call(s, 'buyable') !== false; }).forEach(function (s) { tryShare(s, 'treasury'); }); } catch (e) {}
       });
       // a company buying back (redeeming) its own shares
       if (etype === 'corporation' && has(step, 'redeemable_shares')) {
@@ -141,7 +142,7 @@
     }
     if (can('par')) {
       g.$corporations().forEach(function (c) {
-        try { if (!g['$can_par?'](c, entity)) return; } catch (e) { return; }
+        try { if (!truthy(g['$can_par?'](c, entity))) return; } catch (e) { return; }
         var prices = []; try { prices = arr(step.$get_par_prices(entity, c)); } catch (e) {}
         prices.forEach(function (sp) { var h = base('par'); h.corporation = os(c.$id()); h.share_price = os(sp.$id()); add('Start a company', 'Start ' + os(c.$name()) + ' at ' + money(sp.$price()), h); });
       });
@@ -178,7 +179,7 @@
     if (can('bid')) {
       var cos = []; try { cos = arr(has(step, 'available') ? step.$available() : has(step, 'visible_corporations') ? step.$visible_corporations() : has(step, 'companies') ? step.$companies() : []); } catch (e) {}
       cos.forEach(function (co) {
-        var tp = call(co, 'company?') ? 'company' : call(co, 'minor?') ? 'minor' : 'corporation', h = base('bid'); h[tp] = os(co.$id());
+        var tp = truthy(call(co, 'company?')) ? 'company' : truthy(call(co, 'minor?')) ? 'minor' : 'corporation', h = base('bid'); h[tp] = os(co.$id());
         if (has(step, 'min_bid')) {
           var min = null, max = null; try { min = num(step.$min_bid(co)); } catch (e) {} try { max = num(step.$max_bid(entity, co)); } catch (e) {}
           if (min == null) return; h.price = min;
@@ -265,15 +266,15 @@
   function qgame(J) { var n = E.game.raw.actions.length; if (!E.q || E.q.n !== n) E.q = { n: n, g: J.loadGame(JSON.stringify(E.game.raw)) }; return E.q.g; }
   function curEntity(g) { try { return g.$round().$active_step().$current_entity(); } catch (e) { return null; } }
   function stepFor(g, ent, act) { try { var st = g.$round().$step_for(ent, act); return nil(st) ? null : st; } catch (e) { return null; } }
-  function entJson(ent) { var id = os(call(ent, 'id')); return { entity: isNaN(+id) ? id : +id, entity_type: call(ent, 'player?') ? 'player' : call(ent, 'corporation?') ? 'corporation' : call(ent, 'minor?') ? 'minor' : 'company' }; }
+  function entJson(ent) { var id = os(call(ent, 'id')); return { entity: isNaN(+id) ? id : +id, entity_type: truthy(call(ent, 'player?')) ? 'player' : truthy(call(ent, 'corporation?')) ? 'corporation' : truthy(call(ent, 'minor?')) ? 'minor' : 'company' }; }
   function tileCities(hex) { var t = call(hex, 'tile'); return t ? arr(call(t, 'cities')) : []; }
   // which hexes take a tile or a station now
   function mapTargets(g, ent, acts) {
     var out = {}, ts = acts.indexOf('lay_tile') >= 0 ? stepFor(g, ent, 'lay_tile') : null, tk = acts.indexOf('place_token') >= 0 ? stepFor(g, ent, 'place_token') : null;
     arr(g.$hexes()).forEach(function (hex) {
       var id = os(hex.$id()), k = '';
-      if (ts) { try { if (ts.$available_hex(ent, hex)) k += 't'; } catch (e) {} }
-      if (tk) { try { if (tk.$available_hex(ent, hex) && tileCities(hex).some(function (c) { try { return !!c['$tokenable?'](ent); } catch (e2) { return false; } })) k += 's'; } catch (e) {} }
+      if (ts) { try { if (truthy(ts.$available_hex(ent, hex))) k += 't'; } catch (e) {} }
+      if (tk) { try { if (truthy(tk.$available_hex(ent, hex)) && tileCities(hex).some(function (c) { try { return truthy(c['$tokenable?'](ent)); } catch (e2) { return false; } })) k += 's'; } catch (e) {} }
       if (k) out[id] = k;
     });
     return out;
@@ -296,7 +297,7 @@
       var tk = stepFor(g, ent, 'place_token'), toks = []; try { toks = arr(tk.$available_tokens(ent)); } catch (e) {}
       var owner = null; try { owner = g.$token_owner(ent); } catch (e) {}
       tileCities(hex).forEach(function (c, ci) {
-        try { if (!c['$tokenable?'](ent)) return; } catch (e) { return; }
+        try { if (!truthy(c['$tokenable?'](ent))) return; } catch (e) { return; }
         var slot = 0; try { slot = arr(c.$tokens()).findIndex(function (x) { return nil(x); }); } catch (e) {} if (slot < 0) slot = 0;
         var h = { type: 'place_token', entity: ej.entity, entity_type: ej.entity_type, city: os(c.$id()), slot: slot };
         if (owner) h.tokener = os(owner.$id());
