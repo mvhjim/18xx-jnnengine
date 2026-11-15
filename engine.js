@@ -234,7 +234,7 @@
         try {
           var ent = g.$get(a.entity_type, a.entity), acts = arr(g.$round().$actions_for(ent)).map(os);
           var match = moveOptions(g, ent, acts).filter(function (o) { return same(o.h, a); })[0], found = !!match;
-          if (found && checks.length < 10 && n % 15 === 1) checks.push({ k: k, h: match.h, a: a });
+          if (found && checks.length < 10 && n % 15 === 1) { var hh = JSON.parse(JSON.stringify(match.h)); if (match.amount) hh[match.amount.key] = a[match.amount.key]; checks.push({ k: k, h: hh, a: a }); }
           if (found) ok++; else byType[a.type] = (byType[a.type] || 0) + 1; if (!found && miss.length < 12) miss.push(a.id + ' ' + a.type + ' ' + JSON.stringify(a).slice(0, 160));
         } catch (e) { byType[a.type] = (byType[a.type] || 0) + 1; if (miss.length < 12) miss.push(a.id + ' ' + a.type + ' error: ' + e.message); }
       }
