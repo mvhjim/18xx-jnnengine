@@ -99,11 +99,11 @@
   var SENDABLE = ['pass', 'bid', 'par', 'buy_shares', 'sell_shares', 'dividend', 'buy_train'];
   // the options for one entity in the current step; each is { group, label, h: action JSON (without id), amount?: {min, max, key} }
   function moveOptions(g, entity, acts) {
-    var out = [], step = g.$round().$active_step(), id = os(call(entity, 'id')), etype = call(entity, 'player?') ? 'player' : call(entity, 'corporation?') ? 'corporation' : call(entity, 'minor?') ? 'minor' : call(entity, 'company?') ? 'company' : 'player';
+    var out = [], round = g.$round(), active = round.$active_step(), step = active, id = os(call(entity, 'id')), etype = call(entity, 'player?') ? 'player' : call(entity, 'corporation?') ? 'corporation' : call(entity, 'minor?') ? 'minor' : call(entity, 'company?') ? 'company' : 'player';
     var base = function (type) { return { type: type, entity: isNaN(+id) ? id : +id, entity_type: etype }; };
     var money = function (v) { try { return os(g.$format_currency(v)); } catch (e) { return String(v); } };
     var add = function (group, label, h, amount) { out.push({ group: group, label: label, h: h, amount: amount || null }); };
-    var can = function (a) { return acts.indexOf(a) >= 0; };
+    var can = function (a) { if (acts.indexOf(a) < 0) return false; var st = null; try { st = round.$step_for(entity, a); } catch (e) {} step = nil(st) ? active : st; return true; };
     if (can('pass')) add('Pass', 'Pass', base('pass'));
     if (can('buy_shares')) {
       g.$corporations().forEach(function (c) {
@@ -231,7 +231,7 @@
       if (SENDABLE.indexOf(a.type) >= 0 && a.type !== 'message') {
         n++;
         try {
-          var step = g.$round().$active_step(), ent = g.$get(a.entity_type, a.entity), acts = arr(step.$actions(ent)).map(os);
+          var ent = g.$get(a.entity_type, a.entity), acts = arr(g.$round().$actions_for(ent)).map(os);
           var found = moveOptions(g, ent, acts).some(function (o) { return same(o.h, a); });
           if (found) ok++; else byType[a.type] = (byType[a.type] || 0) + 1; if (!found && miss.length < 12) miss.push(a.id + ' ' + a.type + ' ' + JSON.stringify(a).slice(0, 160));
         } catch (e) { byType[a.type] = (byType[a.type] || 0) + 1; if (miss.length < 12) miss.push(a.id + ' ' + a.type + ' error: ' + e.message); }
@@ -247,7 +247,7 @@
   function movesHtml(d, t, me, myTurn, sup) {
     var gm = E.game, g = gm.g, step = g.$round().$active_step(), ent = null; try { ent = step.$current_entity(); } catch (e) {}
     if (!ent) return '';
-    var acts = []; try { acts = arr(step.$actions(ent)).map(os); } catch (e) {}
+    var acts = []; try { acts = arr(g.$round().$actions_for(ent)).map(os); } catch (e) { try { acts = arr(step.$actions(ent)).map(os); } catch (e2) {} }
     var opts = []; try { opts = moveOptions(g, ent, acts); } catch (e) { return '<p class="note">Could not read the choices: ' + esc(e.message) + '</p>'; }
     E.opts = opts;
     var other = acts.filter(function (a) { return SENDABLE.indexOf(a) < 0 && ['end_game', 'message', 'undo', 'redo', 'log', 'bankrupt'].indexOf(a) < 0 && !/^program_/.test(a); });
