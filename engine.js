@@ -13,11 +13,12 @@
  *
  * Runs on an 18xx.games game page (started from a bookmark) and opens its own window.
  * It contains no game logic of its own: it loads the released 18xx-JNNstats code (JNN-API)
- * and the site's own rules engine. This version only shows the game; it sends no moves.
+ * and the site's own rules engine. Moves are tried on a copy of the game first and sent to
+ * 18xx.games only when sending is switched on, it is your move, and you confirm.
  */
 (function () {
   'use strict';
-  var VERSION = '0.1.0';
+  var VERSION = '0.2.0';
   var API_MAJOR = '1';                 // the JNN-API major version this code is written for
   var API_MIN = '1.1';                 // the oldest minor version it can use
   var FALLBACK_SHA = '068c1ed';        // a JNN-stats release known to work, used if the latest is incompatible
@@ -84,6 +85,193 @@
     });
   }
 
+  // ---------- Moves (J3) -----------------------------------------------------------------------
+  // Every choice is asked from the site's own rules engine, the same way the 18xx.games page does,
+  // then tried on a copy of the game before anything is sent.
+  function nil(o) { return o == null || o === Opal.nil; }
+  function os(o) { return nil(o) ? '' : String(o); }
+  function call(o, m) { var a = Array.prototype.slice.call(arguments, 2); if (nil(o)) return null; var f = o['$' + m]; if (typeof f !== 'function') return null; var r = f.apply(o, a); return nil(r) ? null : r; }
+  function has(o, m) { return !nil(o) && typeof o['$' + m] === 'function'; }
+  function arr(o) { if (nil(o)) return []; if (Array.isArray(o)) return o; if (has(o, 'to_a')) return o.$to_a(); return []; }
+  function num(o) { var v = nil(o) ? null : Number(o); return v == null || isNaN(v) ? null : v; }
+  function hget(h, k) { if (nil(h)) return null; try { var v = h['$[]'](k); if (nil(v) && Opal.Symbol) v = null; return nil(v) ? null : v; } catch (e) { return null; } }
+  var SENDABLE = ['pass', 'bid', 'par', 'buy_shares', 'sell_shares', 'dividend', 'buy_train'];
+  // the options for one entity in the current step; each is { group, label, h: action JSON (without id), amount?: {min, max, key} }
+  function moveOptions(g, entity, acts) {
+    var out = [], step = g.$round().$active_step(), id = os(call(entity, 'id')), etype = call(entity, 'player?') ? 'player' : call(entity, 'corporation?') ? 'corporation' : call(entity, 'minor?') ? 'minor' : call(entity, 'company?') ? 'company' : 'player';
+    var base = function (type) { return { type: type, entity: isNaN(+id) ? id : +id, entity_type: etype }; };
+    var money = function (v) { try { return os(g.$format_currency(v)); } catch (e) { return String(v); } };
+    var add = function (group, label, h, amount) { out.push({ group: group, label: label, h: h, amount: amount || null }); };
+    var can = function (a) { return acts.indexOf(a) >= 0; };
+    if (can('pass')) add('Pass', 'Pass', base('pass'));
+    if (can('buy_shares')) {
+      g.$corporations().forEach(function (c) {
+        var cn = os(c.$name()), seen = {};
+        var tryShare = function (sh, src) {
+          if (nil(sh)) return; var b = sh.$to_bundle(), pct = num(b.$percent()), key = src + pct;
+          if (seen[key]) return;
+          try { if (!step['$can_buy?'](entity, b)) return; } catch (e) { return; }
+          seen[key] = 1;
+          var h = base('buy_shares'); h.shares = [os(sh.$id())]; h.percent = pct; h.share_price = num(call(b, 'share_price')) || undefined;
+          add('Buy shares', 'Buy ' + pct + '% of ' + cn + ' from the ' + src + ' (' + money(b.$price()) + ')', h);
+        };
+        try { arr(c.$ipo_shares()).filter(function (s) { return call(s, 'buyable') !== false; }).forEach(function (s) { tryShare(s, os(g.$ipo_name(c)) || 'IPO'); }); } catch (e) {}
+        try { arr(g.$share_pool().$shares_by_corporation()['$[]'](c)).forEach(function (s) { tryShare(s, 'market'); }); } catch (e) {}
+      });
+    }
+    if (can('sell_shares')) {
+      g.$corporations().forEach(function (c) {
+        var bundles = []; try { bundles = arr(has(step, 'sellable_bundles') ? step.$sellable_bundles(entity, c) : g.$sellable_bundles(entity, c)); } catch (e) {}
+        bundles.forEach(function (b) {
+          var h = base('sell_shares'); h.shares = arr(b.$shares()).map(function (s) { return os(s.$id()); }); h.percent = num(b.$percent()); var sp = num(call(b, 'share_price')); if (sp != null) h.share_price = sp;
+          add('Sell shares', 'Sell ' + h.percent + '% of ' + os(c.$name()) + ' (' + money(b.$price()) + ')', h);
+        });
+      });
+    }
+    if (can('par')) {
+      g.$corporations().forEach(function (c) {
+        try { if (!g['$can_par?'](c, entity)) return; } catch (e) { return; }
+        var prices = []; try { prices = arr(step.$get_par_prices(entity, c)); } catch (e) {}
+        prices.forEach(function (sp) { var h = base('par'); h.corporation = os(c.$id()); h.share_price = os(sp.$id()); add('Start a company', 'Start ' + os(c.$name()) + ' at ' + money(sp.$price()), h); });
+      });
+    }
+    if (can('dividend')) {
+      var opts = null; try { opts = step.$dividend_options(entity); } catch (e) {}
+      var types = []; try { types = arr(step.$dividend_types()).map(os); } catch (e) {}
+      types.filter(function (t) { return t !== 'variable'; }).forEach(function (t) {
+        var o = opts ? hget(opts, t) || hget(opts, Opal.Symbol ? t : t) : null, per = o ? num(hget(o, 'per_share')) : null;
+        var h = base('dividend'); h.kind = t;
+        add('Pay out or withhold', ({ payout: 'Pay out', withhold: 'Withhold', half: 'Pay half' }[t] || t) + (per != null && t !== 'withhold' ? ' (' + money(per) + ' per share)' : ''), h);
+      });
+    }
+    if (can('buy_train')) {
+      var trains = []; try { trains = arr(step.$buyable_trains(entity)); } catch (e) {}
+      var depot = g.$depot(), seenT = {};
+      trains.forEach(function (t) {
+        var owner = call(t, 'owner'), fromDepot = owner === depot || (owner && os(call(owner, 'name')) === 'The Depot');
+        if (fromDepot) {
+          var allowed = []; try { allowed = arr(step.$buyable_train_variants(t, entity)); } catch (e) {}
+          var vs = call(t, 'variants'); (vs ? vs.$keys() : []).forEach(function (vn) {
+            var v = vs['$[]'](vn); if (allowed.length && allowed.indexOf(v) < 0) return;
+            var price = num(hget(v, 'price')), key = 'd' + os(vn) + price; if (seenT[key]) return; seenT[key] = 1;
+            var h = base('buy_train'); h.train = os(t.$id()); h.price = price; h.variant = os(vn);
+            add('Buy a train', 'Buy a ' + os(vn) + ' from the bank (' + money(price) + ')', h);
+          });
+        } else {
+          var on = os(call(owner, 'name')), key2 = 'o' + on + os(t.$name()); if (seenT[key2]) return; seenT[key2] = 1;
+          var h2 = base('buy_train'); h2.train = os(t.$id()); h2.price = 1;
+          add('Buy a train', 'Buy ' + on + '\'s ' + os(t.$name()) + ' for an agreed price', h2, { key: 'price', min: 1, max: num(call(entity, 'cash')) || 1 });
+        }
+      });
+    }
+    if (can('bid')) {
+      var cos = []; try { cos = arr(has(step, 'available') ? step.$available() : (has(step, 'companies') ? step.$companies() : [])); } catch (e) {}
+      cos.forEach(function (co) {
+        var min = null, max = null; try { min = num(step.$min_bid(co)); } catch (e) {} try { max = num(step.$max_bid(entity, co)); } catch (e) {}
+        if (min == null) return;
+        var h = base('bid'), tp = call(co, 'company?') ? 'company' : call(co, 'minor?') ? 'minor' : 'corporation'; h[tp] = os(co.$id()); h.price = min;
+        add('Bid', 'Bid on ' + os(co.$name()) + ' (at least ' + money(min) + ')', h, { key: 'price', min: min, max: max != null ? max : min });
+      });
+    }
+    return out;
+  }
+  // Try a move on a fresh copy of the game: the new log lines, the JSON the page would send, or the engine's reason it is not allowed
+  function dryRun(J, text, h) {
+    var g = J.loadGame(text), before = arr(g.$log()).length;
+    var action = Opal.Engine.Action.Base.$action_from_h(Opal.JSON.$parse(JSON.stringify(h)), g);
+    var g2 = g.$process_action(action, Opal.hash({ add_auto_actions: true }));
+    var ex = call(g2, 'exception'); if (ex) throw new Error(os(call(ex, 'message')) || os(ex));
+    var log = arr(g2.$log()).slice(before).map(function (l) { return os(call(l, 'message')); }).filter(Boolean);
+    var json = action.$to_h().$to_n(), actors = []; try { actors = arr(g.$valid_actors(action)).map(function (p) { return num(p.$id()); }); } catch (e) {}
+    return { log: log, json: json, actors: actors };
+  }
+  function pageUser() {
+    try {
+      var sc = Array.prototype.map.call(document.scripts, function (s) { return s.textContent; }).filter(function (t) { return t.indexOf("Opal.App.$attach('app'") >= 0; })[0] || '';
+      var i = sc.lastIndexOf('"user",'); if (i < 0) return null;
+      var mm = /^"user",Opal\.hash\("id",(\d+),"name","([^"]*)"/.exec(sc.slice(i)); return mm ? { id: +mm[1], name: mm[2] } : null;
+    } catch (e) { return null; }
+  }
+  function sendOn() { try { return localStorage.getItem('jnnEngine.send') === '1'; } catch (e) { return false; } }
+  function setSend(v) { try { localStorage.setItem('jnnEngine.send', v ? '1' : '0'); } catch (e) {} }
+  function postAction(json) {
+    var body = {}; Object.keys(json).forEach(function (k) { body[k] = json[k]; });
+    try { if (window.MessageBus && window.MessageBus.clientId) body._client_id = window.MessageBus.clientId; } catch (e) {}
+    return fetch('/api/game/' + gid + '/action', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      .then(function (r) { return r.text().then(function (t) { var j = null; try { j = JSON.parse(t); } catch (e) {} if (!r.ok || (j && j.error)) throw new Error((j && j.error) || t.slice(0, 200) || ('HTTP ' + r.status)); return j; }); });
+  }
+  // Self-test: walk through a finished game and check that every move of a supported kind was among the options offered
+  function selfTest(J, text) {
+    var raw = JSON.parse(text), eff = J.effectiveActions(raw), j0 = JSON.parse(text); j0.actions = []; j0.status = 'active'; delete j0.result;
+    var g = J.loadGame(JSON.stringify(j0)), ok = 0, miss = [], n = 0;
+    var same = function (h, a) {
+      if (h.type !== a.type || String(h.entity) !== String(a.entity)) return false;
+      var keys = { buy_shares: ['shares'], sell_shares: ['shares'], par: ['corporation', 'share_price'], dividend: ['kind'], buy_train: ['train', 'variant'], bid: ['company', 'minor', 'corporation'], pass: [] }[h.type] || [];
+      return keys.every(function (k) { var x = h[k], y = a[k]; if (k === 'shares') return JSON.stringify((x || []).slice().sort()) === JSON.stringify((y || []).slice().sort()); if (k === 'variant' && (y == null || x === y)) return true; return x == null && y == null || String(x) === String(y); });
+    };
+    eff.forEach(function (a) {
+      if (SENDABLE.indexOf(a.type) >= 0 && a.type !== 'message') {
+        n++;
+        try {
+          var step = g.$round().$active_step(), ent = g.$get(a.entity_type, a.entity), acts = arr(step.$actions(ent)).map(os);
+          var found = moveOptions(g, ent, acts).some(function (o) { return same(o.h, a); });
+          if (found) ok++; else if (miss.length < 12) miss.push(a.id + ' ' + a.type + ' ' + JSON.stringify(a).slice(0, 160));
+        } catch (e) { if (miss.length < 12) miss.push(a.id + ' ' + a.type + ' error: ' + e.message); }
+      }
+      g = g.$process_action(Opal.JSON.$parse(JSON.stringify(a)));
+    });
+    return { title: raw.title, moves: n, found: ok, missing: miss };
+  }
+  E.selfTest = function (id) { return pickStats().then(loadStats).then(function (J) { return J.fetchGameText(id || gid).then(function (t) { var raw = JSON.parse(t); return J.ensureTitle(raw.title).then(function () { return selfTest(J, t); }); }); }); };
+
+  // the move panel and the confirmation
+  function movesHtml(d, t, me, myTurn, sup) {
+    var gm = E.game, g = gm.g, step = g.$round().$active_step(), ent = null; try { ent = step.$current_entity(); } catch (e) {}
+    if (!ent) return '';
+    var acts = []; try { acts = arr(step.$actions(ent)).map(os); } catch (e) {}
+    var opts = []; try { opts = moveOptions(g, ent, acts); } catch (e) { return '<p class="note">Could not read the choices: ' + esc(e.message) + '</p>'; }
+    E.opts = opts;
+    var other = acts.filter(function (a) { return SENDABLE.indexOf(a) < 0 && ['end_game', 'message', 'undo', 'redo', 'log', 'bankrupt'].indexOf(a) < 0 && !/^program_/.test(a); });
+    var groups = []; opts.forEach(function (o, i) { var gr = groups.filter(function (x) { return x.name === o.group; })[0]; if (!gr) { gr = { name: o.group, items: [] }; groups.push(gr); } gr.items.push(i); });
+    var h = groups.map(function (gr) {
+      return '<div class="mg"><div class="mgh">' + esc(gr.name) + '</div>' + gr.items.map(function (i) { var o = opts[i];
+        return '<span class="mo">' + (o.amount ? '<input type="number" class="amt" data-i="' + i + '" min="' + o.amount.min + '" max="' + o.amount.max + '" value="' + o.amount.min + '">' : '') + '<button class="pill mv" data-i="' + i + '">' + esc(o.label) + '</button></span>'; }).join('') + '</div>';
+    }).join('');
+    if (other.length) h += '<p class="note">Also possible now, but not in JNN-Engine yet (use the 18xx.games page): ' + other.map(function (a) { return esc(a.replace(/_/g, ' ')); }).join(', ') + '.</p>';
+    var u = pageUser(), mode = !sup ? 'This title is not tested with JNN-Engine: you can try moves here, but they are never sent.' : !sendOn() ? 'Test mode: moves are checked on a copy of the game and shown, but not sent. Switch sending on above when you are ready.' : !u ? 'You are not logged in on this page, so moves are not sent.' : 'Sending is on: a move is sent to 18xx.games only after you confirm it.';
+    return (h || '<p class="note">Nothing JNN-Engine can do in this step yet; use the 18xx.games page.</p>') + '<p class="note">' + esc(mode) + '</p>';
+  }
+  function confirmBox(J, i) {
+    var doc = w.document, o = E.opts[i]; if (!o) return;
+    var h = JSON.parse(JSON.stringify(o.h));
+    if (o.amount) { var inp = doc.querySelector('.amt[data-i="' + i + '"]'), v = Math.round(+inp.value); if (!(v >= o.amount.min && v <= o.amount.max)) { alertBox('Choose an amount between ' + o.amount.min + ' and ' + o.amount.max + '.'); return; } h[o.amount.key] = v; }
+    var old = doc.getElementById('cbox'); if (old) old.remove();
+    var box = doc.createElement('div'); box.id = 'cbox'; box.innerHTML = '<div class="cb"><b>Checking the move on a copy of the game…</b></div>'; doc.body.appendChild(box);
+    setTimeout(function () {
+      var r = null, err = null; try { r = dryRun(J, JSON.stringify(E.game.raw), h); } catch (e) { err = e.message || String(e); }
+      var u = pageUser(), sup = SUPPORTED.indexOf(E.game.raw.title) >= 0, pinned = !!(E.game.raw.settings && E.game.raw.settings.pin);
+      var mine = r && u && r.actors.indexOf(u.id) >= 0, canSend = !err && sendOn() && sup && !pinned && mine && E.game.raw.status !== 'finished';
+      var why = err ? '' : !sup ? 'not a tested title' : pinned ? 'pinned games are not supported' : !sendOn() ? 'test mode is on' : !u ? 'you are not logged in on this page' : !mine ? 'it is not your move (only the player whose turn it is may make it)' : '';
+      box.innerHTML = '<div class="cb"><h3>' + esc(o.label) + '</h3>' + (err ? '<p class="bad">The rules engine does not allow this move: ' + esc(err) + '</p>' :
+        '<p>This is what will happen:</p><ul>' + r.log.map(function (l) { return '<li>' + esc(l) + '</li>'; }).join('') + '</ul><details><summary>What would be sent</summary><pre>' + esc(JSON.stringify(r.json, null, 1)) + '</pre></details>') +
+        '<p class="note">' + (canSend ? 'Press Send to make this move on 18xx.games. It is checked again against the latest game first.' : err ? '' : 'Not sent: ' + esc(why) + '.') + '</p>' +
+        '<div class="cbb">' + (canSend ? '<button class="pill go" id="cb-send">Send</button>' : '') + '<button class="pill" id="cb-x">' + (canSend ? 'Cancel' : 'Close') + '</button></div></div>';
+      doc.getElementById('cb-x').onclick = function () { box.remove(); };
+      var sb = doc.getElementById('cb-send');
+      if (sb) sb.onclick = function () {
+        sb.disabled = true; sb.textContent = 'Sending…';
+        var n0 = E.game.raw.actions.length;
+        J.fetchGameText(gid).then(function (text) {
+          var fresh = JSON.parse(text); if (fresh.actions.length !== n0) throw new Error('the game has moved on since you chose this move; look again and choose again');
+          var r2 = dryRun(J, text, h); if (r2.actors.indexOf(u.id) < 0) throw new Error('it is no longer your move');
+          return postAction(r2.json);
+        }).then(function () { box.innerHTML = '<div class="cb"><b>Sent.</b> The window updates in a moment.</div>'; setTimeout(function () { try { box.remove(); } catch (e) {} }, 1500); cycle(true); },
+          function (e) { box.innerHTML = '<div class="cb"><p class="bad">Not sent: ' + esc(e.message || e) + '</p><p class="note">Nothing changed on 18xx.games. You can always make the move on the site.</p><div class="cbb"><button class="pill" id="cb-x2">Close</button></div></div>'; doc.getElementById('cb-x2').onclick = function () { box.remove(); }; cycle(true); });
+      };
+    }, 30);
+  }
+  function alertBox(msg) { var doc = w.document, b = doc.createElement('div'); b.id = 'cbox'; b.innerHTML = '<div class="cb"><p>' + esc(msg) + '</p><div class="cbb"><button class="pill" id="cb-x">Close</button></div></div>'; var old = doc.getElementById('cbox'); if (old) old.remove(); doc.body.appendChild(b); doc.getElementById('cb-x').onclick = function () { b.remove(); }; }
+
   // ---------- drawing ----------
   var CSS_EXTRA = [
     'body{margin:0}header.je{position:sticky;top:0;z-index:5;background:var(--surface-0);border-bottom:1px solid var(--grid);padding:8px 14px}',
@@ -92,7 +280,11 @@
     '.jcol{display:flex;flex-direction:column;gap:12px;min-width:0}.jb svg{width:100%;height:auto}',
     '.act{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}.act button{opacity:.6;cursor:not-allowed}',
     '.yt{border:2px solid var(--accent);border-radius:12px}.note{font-size:12px;color:var(--text-secondary)}',
-    '.mine td{font-weight:650}.ft{padding:4px 14px 14px;font-size:11.5px;color:var(--text-muted)}'
+    '.mine td{font-weight:650}.ft{padding:4px 14px 14px;font-size:11.5px;color:var(--text-muted)}',
+    '.mg{margin:6px 0}.mgh{font-size:11.5px;color:var(--text-secondary);margin-bottom:3px}.mo{display:inline-flex;gap:4px;margin:0 6px 6px 0;align-items:center}.amt{width:80px;padding:3px 5px;border-radius:6px;border:1px solid var(--grid);background:var(--surface-1);color:var(--text-primary)}',
+    '#cbox{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:flex-start;justify-content:center;z-index:50;padding-top:8vh}.cb{background:var(--surface-1);border:1px solid var(--grid);border-radius:12px;padding:14px 18px;max-width:560px;width:92%;max-height:80vh;overflow:auto;box-shadow:0 10px 30px rgba(0,0,0,.35)}',
+    '.cb h3{margin:0 0 8px}.cb pre{font-size:11px;white-space:pre-wrap}.cbb{display:flex;gap:8px;justify-content:flex-end;margin-top:8px}.go{background:var(--accent)!important;color:#fff!important}.bad{color:#d9534f}',
+    '.sendsw{cursor:pointer;margin-left:6px}.sendsw.on{background:#2e9e5b;color:#fff}'
   ].join('\n');
   var ACT = { pass: 'Pass', bid: 'Bid', par: 'Start a company', buy_shares: 'Buy shares', sell_shares: 'Sell shares', lay_tile: 'Lay a tile', place_token: 'Place a station',
     run_routes: 'Run trains', dividend: 'Pay out or withhold', buy_train: 'Buy a train', buy_company: 'Buy a private', discard_train: 'Discard a train', bankrupt: 'Go bankrupt',
@@ -106,7 +298,7 @@
     var sup = SUPPORTED.indexOf(d.title) >= 0, t = d.live && d.live.turn, acting = t ? (t.entType === 'player' ? t.entity : t.owner) : null, myTurn = !!(me && acting === me);
     var sw = function (c) { return '<i class="sw" style="background:' + esc(c) + '"></i>'; };
     var h = [];
-    h.push('<header class="je"><h1>' + esc(d.title) + '</h1><span class="ro">JNN-Engine · view only</span>' + (J.privacyOn() ? '<span class="ro">🕶 private</span>' : '') + '<br>' +
+    h.push('<header class="je"><h1>' + esc(d.title) + '</h1><span class="ro">JNN-Engine</span><span class="ro sendsw' + (sendOn() ? ' on' : '') + '" id="sendsw" title="When on, a move you confirm is sent to 18xx.games. When off (test mode), moves are only checked on a copy.">Sending moves: ' + (sendOn() ? 'on' : 'off (test mode)') + '</span>' + (J.privacyOn() ? '<span class="ro">🕶 private</span>' : '') + '<br>' +
       '<span class="kv">Round <b>' + esc(d.roundLabel) + '</b></span><span class="kv">Phase <b>' + esc(d.phase) + '</b></span><span class="kv">Bank <b>' + esc(d.primer && d.primer.bankUnlimited ? 'unlimited' : m(d.bank)) + '</b></span>' +
       (d.nextTrain ? '<span class="kv">Next train <b>' + esc(d.nextTrain.name) + ' ' + esc(m(d.nextTrain.price)) + '</b></span>' : '') +
       (d.finished ? '<span class="kv"><b>Game over</b></span>' : acting ? '<span class="kv">To act: ' + (pc[acting] ? sw(pc[acting]) : '') + '<b>' + esc(acting) + '</b>' + (t.entType !== 'player' ? ' for ' + esc(t.entity) : '') + (myTurn ? ' · <b style="color:var(--accent)">your turn</b>' : '') + '</span>' : '') + '</header>');
@@ -116,13 +308,9 @@
     h.push('<section class="card wide jb"><h2>Board</h2>' + J.boardSvg(d, null, [], 1400) + '</section>');
     h.push('<section class="card wide"><h2>Stock market</h2>' + J.marketHtml(d, dark, me, (d.gridHist || []).length - 1, m) + '</section>');
     h.push('</div><div class="jcol">');
-    // moves now (view only in this version)
+    // moves now
     if (!d.finished && t) {
-      var real = (t.actions || []).filter(function (a) { return ['end_game', 'message', 'undo', 'redo', 'log', 'bankrupt'].indexOf(a) < 0 && !/^program_/.test(a); });
-      if (!real.length && (t.actions || []).indexOf('bankrupt') >= 0) real = ['bankrupt'];
-      var acts = real.map(function (a) { return '<button class="pill" disabled title="Sending moves comes in a later version">' + esc(ACT[a] || a.replace(/_/g, ' ')) + '</button>'; }).join('');
-      h.push('<section class="card' + (myTurn ? ' yt' : '') + '"><h2>' + (myTurn ? 'Your turn' : 'Now') + '</h2><p class="sub">' + esc(t.entity) + (t.desc ? ': ' + esc(t.desc) : '') + '</p><div class="act">' + acts + '</div>' +
-        '<p class="note">This version only shows the game. Make your move on the 18xx.games page' + (sup ? '; sending moves from here comes in a later version.' : '. This title is not tested with JNN-Engine yet, so it will stay view only.') + '</p></section>');
+      h.push('<section class="card' + (myTurn ? ' yt' : '') + '"><h2>' + (myTurn ? 'Your turn' : 'Now') + '</h2><p class="sub">' + esc(t.entity) + (t.desc ? ': ' + esc(t.desc) : '') + '</p>' + movesHtml(d, t, me, myTurn, sup) + '</section>');
       if (J.learnLevel()) h.push('<section class="card">' + J.yourTurnHtml(d, me, m) + '</section>');
     }
     // you
@@ -143,7 +331,7 @@
       open.map(function (c) { return '<tr><td style="text-align:left">' + sw(c.color) + esc(c.name) + '</td><td>' + esc(c.president || '–') + '</td><td>' + esc(c.price != null ? m(c.price) : '–') + '</td><td>' + esc(m(c.cash)) + '</td><td>' + esc(c.trains.map(function (x) { return x.name; }).join(', ') || 'none') + '</td></tr>'; }).join('') + '</tbody></table></div></section>');
     h.push('</div></div>');
     h.push('<div class="ft">JNN-Engine ' + VERSION + ' · built on 18xx-JNNstats ' + esc(J.version) + ' (JNN-API ' + esc(J.apiVersion) + ')' + (E.pinned ? ' · using the newest JNN-stats release known to fit this JNN-Engine' : '') +
-      ' · ' + (sup ? 'tested title' : 'title not tested with JNN-Engine yet') + ' · updated ' + new Date().toLocaleTimeString() + ' · the 18xx.games page is always the place to play if anything here looks wrong.</div>');
+      ' · ' + (sup ? 'tested title' : 'title not tested with JNN-Engine yet: moves are never sent') + ' · updated ' + new Date().toLocaleTimeString() + ' · the 18xx.games page is always the place to play if anything here looks wrong.</div>');
     var y = w.scrollY || 0;
     if (!doc.getElementById('jcss')) { doc.head.innerHTML = '<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>JNN-Engine</title><style id="jcss"></style><style id="jcss2"></style>'; }
     doc.title = (myTurn ? '● Your turn · ' : '') + d.title + ' · JNN-Engine';
@@ -151,6 +339,16 @@
     doc.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
     doc.body.innerHTML = h.join('');
     w.scrollTo(0, y);
+    doc.body.onclick = function (ev) {
+      var b = ev.target.closest && ev.target.closest('button.mv'); if (b) { confirmBox(J, +b.getAttribute('data-i')); return; }
+      if (ev.target.id === 'sendsw') {
+        if (!sendOn()) {
+          if (!w.confirm('Switch sending on?\n\nWhen on, a move you confirm in JNN-Engine is sent to 18xx.games as you, exactly as if you had made it on the site. Every move is checked on a copy of the game first. You can switch it off again at any time.')) return;
+          setSend(true);
+        } else setSend(false);
+        draw(J);
+      }
+    };
   }
 
   function cycle(force) {
