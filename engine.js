@@ -209,7 +209,7 @@
   // Self-test: walk through a finished game and check that every move of a supported kind was among the options offered
   function selfTest(J, text) {
     var raw = JSON.parse(text), eff = J.effectiveActions(raw), j0 = JSON.parse(text); j0.actions = []; j0.status = 'active'; delete j0.result;
-    var g = J.loadGame(JSON.stringify(j0)), ok = 0, miss = [], n = 0;
+    var g = J.loadGame(JSON.stringify(j0)), ok = 0, miss = [], n = 0, byType = {};
     var same = function (h, a) {
       if (h.type !== a.type || String(h.entity) !== String(a.entity)) return false;
       var keys = { buy_shares: ['shares'], sell_shares: ['shares'], par: ['corporation', 'share_price'], dividend: ['kind'], buy_train: ['train', 'variant'], bid: ['company', 'minor', 'corporation'], pass: [] }[h.type] || [];
@@ -221,12 +221,12 @@
         try {
           var step = g.$round().$active_step(), ent = g.$get(a.entity_type, a.entity), acts = arr(step.$actions(ent)).map(os);
           var found = moveOptions(g, ent, acts).some(function (o) { return same(o.h, a); });
-          if (found) ok++; else if (miss.length < 12) miss.push(a.id + ' ' + a.type + ' ' + JSON.stringify(a).slice(0, 160));
-        } catch (e) { if (miss.length < 12) miss.push(a.id + ' ' + a.type + ' error: ' + e.message); }
+          if (found) ok++; else byType[a.type] = (byType[a.type] || 0) + 1; if (!found && miss.length < 12) miss.push(a.id + ' ' + a.type + ' ' + JSON.stringify(a).slice(0, 160));
+        } catch (e) { byType[a.type] = (byType[a.type] || 0) + 1; if (miss.length < 12) miss.push(a.id + ' ' + a.type + ' error: ' + e.message); }
       }
       g = g.$process_action(Opal.JSON.$parse(JSON.stringify(a)));
     });
-    return { title: raw.title, moves: n, found: ok, missing: miss };
+    return { title: raw.title, moves: n, found: ok, missingByType: byType, missing: miss };
   }
   E.selfTest = function (id) { return pickStats().then(loadStats).then(function (J) { return J.fetchGameText(id || gid).then(function (t) { var raw = JSON.parse(t); return J.ensureTitle(raw.title).then(function () { return selfTest(J, t); }); }); }); };
 
