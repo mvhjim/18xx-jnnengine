@@ -107,6 +107,8 @@
     if (can('pass')) add('Pass', 'Pass', base('pass'));
     if (can('buy_shares')) {
       g.$corporations().forEach(function (c) {
+        // like the site: shares are offered only for companies that have been started (a new company is started with "Start a company")
+        if (!call(c, 'ipoed') && !call(c, 'floated?')) return;
         var cn = os(c.$name()), seen = {};
         var tryShare = function (sh, src) {
           if (nil(sh)) return; var b = sh.$to_bundle(), pct = num(b.$percent()), key = src + pct;
