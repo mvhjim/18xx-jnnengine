@@ -167,7 +167,10 @@
             var v = vs['$[]'](vn); if (allowed.length && allowed.indexOf(v) < 0) return;
             var price = num(hget(v, 'price')), key = 'd' + os(vn) + price; if (seenT[key]) return; seenT[key] = 1;
             var h = base('buy_train'); h.train = os(t.$id()); h.price = price; h.variant = os(vn);
-            add('Buy a train', 'Buy a ' + os(vn) + ' from the bank (' + money(price) + ')', h);
+            var wmax = 0; try { if (has(step, 'warranty_max')) wmax = num(step.$warranty_max()) || 0; } catch (e) {}
+            if (wmax > 0) { var wc = 0; try { wc = num(step.$warranty_cost()); } catch (e) {} h.warranties = 0;
+              add('Buy a train', 'Buy a ' + os(vn) + ' from the bank (' + money(price) + ') with this many warranties' + (wc ? ' (' + money(wc) + ' each)' : ''), h, { key: 'warranties', min: 0, max: wmax }); }
+            else add('Buy a train', 'Buy a ' + os(vn) + ' from the bank (' + money(price) + ')', h);
           });
         } else {
           var on = os(call(owner, 'name')), key2 = 'o' + on + os(t.$name()); if (seenT[key2]) return; seenT[key2] = 1;
