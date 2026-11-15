@@ -273,7 +273,7 @@
     var out = {}, ts = acts.indexOf('lay_tile') >= 0 ? stepFor(g, ent, 'lay_tile') : null, tk = acts.indexOf('place_token') >= 0 ? stepFor(g, ent, 'place_token') : null;
     arr(g.$hexes()).forEach(function (hex) {
       var id = os(hex.$id()), k = '';
-      if (ts) { try { if (truthy(ts.$available_hex(ent, hex))) k += 't'; } catch (e) {} }
+      if (ts) { try { if (truthy(ts.$available_hex(ent, hex)) && arr(ts.$upgradeable_tiles(ent, hex)).length) k += 't'; } catch (e) {} }
       if (tk) { try { if (truthy(tk.$available_hex(ent, hex)) && tileCities(hex).some(function (c) { try { return truthy(c['$tokenable?'](ent)); } catch (e2) { return false; } })) k += 's'; } catch (e) {} }
       if (k) out[id] = k;
     });
@@ -371,7 +371,7 @@
     try { opts = hexOptions(g, ent, hexId, E.targets[hexId] || ''); } catch (e) { box.innerHTML = '<p class="note">Could not read the choices: ' + esc(e.message) + '</p>'; return; }
     if (!opts.length) { box.innerHTML = '<p class="note">Nothing can be placed on ' + esc(hexId) + ' now.</p>'; return; }
     var base = E.opts.length; opts.forEach(function (o) { E.opts.push(o); });
-    box.innerHTML = '<div class="mgh">' + esc(hexId) + '</div><div class="tiles">' + opts.map(function (o, k) { return o.svg ? '<button class="tilebtn mv" data-i="' + (base + k) + '" title="' + esc(o.label) + '">' + o.svg + '</button>' : '<button class="pill mv" data-i="' + (base + k) + '">' + esc(o.label) + '</button>'; }).join('') + '</div>';
+    box.innerHTML = '<div class="mgh">' + esc(hexId) + '</div><div class="tiles">' + opts.map(function (o, k) { return o.svg ? '<button class="tilebtn jmv" data-i="' + (base + k) + '" title="' + esc(o.label) + '">' + o.svg + '</button>' : '<button class="pill jmv" data-i="' + (base + k) + '">' + esc(o.label) + '</button>'; }).join('') + '</div>';
   }
   function runRoutesUi(J) {
     var doc = w.document, out = doc.getElementById('rr-out'), b = doc.getElementById('rr-find'); if (!out) return;
@@ -381,7 +381,7 @@
         b.disabled = false; b.textContent = 'Find the best routes again';
         if (!r) { out.innerHTML = '<p class="bad">' + esc(err) + '</p>'; return; }
         var i = E.opts.length; E.opts.push({ group: 'Run trains', label: 'Run these routes (' + r.total + ')', h: r.h });
-        out.innerHTML = '<ul>' + r.list.map(function (x) { return '<li><b>' + esc(x.train) + '</b>: ' + esc(x.stops.join('–')) + ' = ' + esc(String(x.rev)) + '</li>'; }).join('') + '</ul><button class="pill mv" data-i="' + i + '">Run these routes (total ' + esc(String(r.total)) + ')</button>';
+        out.innerHTML = '<ul>' + r.list.map(function (x) { return '<li><b>' + esc(x.train) + '</b>: ' + esc(x.stops.join('–')) + ' = ' + esc(String(x.rev)) + '</li>'; }).join('') + '</ul><button class="pill jmv" data-i="' + i + '">Run these routes (total ' + esc(String(r.total)) + ')</button>';
       });
     }, 30);
   }
@@ -412,7 +412,7 @@
     var groups = []; opts.forEach(function (o, i) { var gr = groups.filter(function (x) { return x.name === o.group; })[0]; if (!gr) { gr = { name: o.group, items: [] }; groups.push(gr); } gr.items.push(i); });
     var h = groups.map(function (gr) {
       return '<div class="mg"><div class="mgh">' + esc(gr.name) + '</div>' + gr.items.map(function (i) { var o = opts[i];
-        return '<span class="mo">' + (o.amount ? '<input type="number" class="amt" data-i="' + i + '" min="' + o.amount.min + '" max="' + o.amount.max + '" value="' + o.amount.min + '">' : '') + '<button class="pill mv" data-i="' + i + '">' + esc(o.label) + '</button></span>'; }).join('') + '</div>';
+        return '<span class="mo">' + (o.amount ? '<input type="number" class="amt" data-i="' + i + '" min="' + o.amount.min + '" max="' + o.amount.max + '" value="' + o.amount.min + '">' : '') + '<button class="pill jmv" data-i="' + i + '">' + esc(o.label) + '</button></span>'; }).join('') + '</div>';
     }).join('');
     try { h += mapMovesHtml(E.J, d, acts); } catch (eM) { h += '<p class="note">Could not read the map choices: ' + esc(eM.message) + '</p>'; }
     if (other.length) h += '<p class="note">Also possible now, but not in JNN-Engine yet (use the 18xx.games page): ' + other.map(function (a) { return esc(a.replace(/_/g, ' ')); }).join(', ') + '.</p>';
@@ -520,7 +520,7 @@
     doc.body.innerHTML = h.join('');
     w.scrollTo(0, y);
     doc.body.onclick = function (ev) {
-      var b = ev.target.closest && ev.target.closest('button.mv'); if (b) { confirmBox(J, +b.getAttribute('data-i')); return; }
+      var b = ev.target.closest && ev.target.closest('button.jmv'); if (b) { confirmBox(J, +b.getAttribute('data-i')); return; }
       var hx = ev.target.closest && ev.target.closest('.hx'); if (hx) { showHexOptions(J, hx.getAttribute('data-hex')); return; }
       if (ev.target.id === 'rr-find') { runRoutesUi(J); return; }
       if (ev.target.id === 'sendsw') {
