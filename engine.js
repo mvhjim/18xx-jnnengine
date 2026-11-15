@@ -165,7 +165,7 @@
       });
     }
     if (can('bid')) {
-      var cos = []; try { cos = arr(has(step, 'available') ? step.$available() : (has(step, 'companies') ? step.$companies() : [])); } catch (e) {}
+      var cos = []; try { cos = arr(has(step, 'available') ? step.$available() : has(step, 'visible_corporations') ? step.$visible_corporations() : has(step, 'companies') ? step.$companies() : []); } catch (e) {}
       cos.forEach(function (co) {
         var tp = call(co, 'company?') ? 'company' : call(co, 'minor?') ? 'minor' : 'corporation', h = base('bid'); h[tp] = os(co.$id());
         if (has(step, 'min_bid')) {
@@ -228,6 +228,7 @@
     });
     return { title: raw.title, moves: n, found: ok, missingByType: byType, missing: miss };
   }
+  E._moveOptions = moveOptions;
   E.selfTest = function (id) { return pickStats().then(loadStats).then(function (J) { return J.fetchGameText(id || gid).then(function (t) { var raw = JSON.parse(t); return J.ensureTitle(raw.title).then(function () { return selfTest(J, t); }); }); }); };
 
   // the move panel and the confirmation
