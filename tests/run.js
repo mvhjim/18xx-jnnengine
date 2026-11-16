@@ -11,7 +11,7 @@
   var TITLES = ['1817', '1846', '1862', 'The Old Prince 1871', '1849: Kingdom of the Two Sicilies'];
   var per = window.__JNN_TEST_PER_TITLE || 2;
   // a pause that also works in a hidden window (where timers run only about once a minute)
-  var pause = function (ms) { return new Promise(function (r) { var end = Date.now() + ms, mc = new MessageChannel(); mc.port1.onmessage = function () { if (Date.now() >= end) r(); else setTimeout(function () { mc.port2.postMessage(0); }, 50); }; mc.port2.postMessage(0); }); };
+  var pause = function (ms) { return new Promise(function (r) { var end = Date.now() + ms, mc = new MessageChannel(); mc.port1.onmessage = function () { if (Date.now() >= end) r(); else mc.port2.postMessage(0); }; mc.port2.postMessage(0); }); };
   window.__jnnTestRows = []; window.__jnnTestDone = false;
   (async function () {
     var ids = window.__JNN_TEST_IDS;
