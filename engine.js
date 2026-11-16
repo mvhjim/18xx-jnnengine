@@ -135,6 +135,27 @@
         try { arr(g.$share_pool().$shares_by_corporation()['$[]'](c)).forEach(function (s) { tryShare(s, 'market'); }); } catch (e) {}
         try { if (!truthy(call(c, 'ipo_is_treasury?'))) arr(call(c, 'treasury_shares')).filter(function (s) { return call(s, 'buyable') !== false; }).forEach(function (s) { tryShare(s, 'treasury'); }); } catch (e) {}
       });
+      // buying for someone else (The Old Prince 1871: for the Union Bank, with your own money)
+      if (etype === 'player' && has(step, 'can_buy_for')) {
+        try {
+          arr(step.$can_buy_for(entity)).forEach(function (tgt) {
+            var tn = nm(tgt), seen2 = {};
+            g.$corporations().forEach(function (c) {
+              if (!truthy(call(c, 'ipoed')) && !truthy(call(c, 'floated?'))) return;
+              var srcs = [[arr(c.$ipo_shares()), os(g.$ipo_name(c)) || 'IPO'], [arr(g.$share_pool().$shares_by_corporation()['$[]'](c)), 'market'], [truthy(call(c, 'ipo_is_treasury?')) ? [] : arr(call(c, 'treasury_shares')), 'treasury']];
+              srcs.forEach(function (sx) {
+                sx[0].forEach(function (sh) {
+                  if (call(sh, 'buyable') === false) return; var b = sh.$to_bundle(), pct = num(b.$percent()), k3 = os(c.$name()) + sx[1] + pct; if (seen2[k3]) return;
+                  try { if (!truthy(step['$can_buy?'](tgt, b, Opal.hash({ borrow_from: entity })))) return; } catch (e) { return; }
+                  seen2[k3] = 1;
+                  var hb = mk('BuyShares', { shares: sh, percent: pct, purchase_for: tgt, borrow_from: entity });
+                  add('Buy for ' + tn, 'Buy ' + pct + '% of ' + os(c.$name()) + ' for ' + tn + ' from the ' + sx[1] + ' (' + money(b.$price()) + ', your money)', hb);
+                });
+              });
+            });
+          });
+        } catch (e) {}
+      }
       // a private company exchanged for a share
       if (etype === 'company') {
         try {
@@ -304,9 +325,10 @@
     // two moves are the same if they buy or sell the same size of share of the same company from the same place,
     // even when the engine picks a different certificate number
     var shareKey = function (ids) { return (ids || []).map(function (id) { try { var sh = g.$share_by_id(id), own = sh.$owner(); return os(sh.$corporation().$id()) + ':' + num(sh.$percent()) + ':' + (own === g.$share_pool() ? 'm' : own === sh.$corporation() ? 'i' : 'o'); } catch (e) { return id; } }).sort().join(','); };
-    var same = function (h, a) {
+    var same = function (h, a, o) {
+      if (o && o.amount) { var v = a[o.amount.key]; if (v == null || +v < o.amount.min || +v > o.amount.max) return false; h = JSON.parse(JSON.stringify(h)); h[o.amount.key] = v; }
       if (h.type !== a.type || String(h.entity) !== String(a.entity)) return false;
-      var keys = { buy_shares: ['shares'], sell_shares: ['shares'], par: ['corporation', 'share_price'], dividend: ['kind'], buy_train: ['train', 'variant'], bid: ['company', 'minor', 'corporation'], pass: [],
+      var keys = { buy_shares: ['shares', 'purchase_for'], sell_shares: ['shares'], par: ['corporation', 'share_price'], dividend: ['kind'], buy_train: ['train', 'variant'], bid: ['company', 'minor', 'corporation'], pass: [],
         take_loan: [], payoff_loan: [], short: ['corporation'], convert: [], merge: ['corporation', 'minor'], choose: ['choice'], assign: ['target', 'target_type'], remove_token: ['city'], discard_train: ['train'] }[h.type] || [];
       return keys.every(function (k) { var x = h[k], y = a[k]; if (k === 'shares') return shareKey(x) === shareKey(y); if (k === 'variant' && (y == null || x === y)) return true; return x == null && y == null || String(x) === String(y); });
     };
@@ -320,7 +342,7 @@
         n++;
         try {
           var ent = g.$get(a.entity_type, a.entity), acts = arr(g.$round().$actions_for(ent)).map(os);
-          var match = moveOptions(g, ent, acts).filter(function (o) { return same(o.h, a); })[0], found = !!match;
+          var match = moveOptions(g, ent, acts).filter(function (o) { return same(o.h, a, o); })[0], found = !!match;
           if (found && checks.length < 10 && n % 15 === 1) { var hh = JSON.parse(JSON.stringify(match.h)); if (match.amount) hh[match.amount.key] = a[match.amount.key]; checks.push({ k: k, h: hh, a: a }); }
           if (found) ok++; else byType[a.type] = (byType[a.type] || 0) + 1; if (!found && miss.length < 12) miss.push(a.id + ' ' + a.type + ' ' + JSON.stringify(a).slice(0, 160));
         } catch (e) { byType[a.type] = (byType[a.type] || 0) + 1; if (miss.length < 12) miss.push(a.id + ' ' + a.type + ' error: ' + e.message); }
