@@ -1,6 +1,20 @@
 # Changelog
 All notable changes to this project are listed here. The format follows [Keep a Changelog](https://keepachangelog.com), and versions follow [Semantic Versioning](https://semver.org).
 
+## [0.6.2] - 2026-11-16 (beta)
+
+### Added
+- **Working beside JNN-stats.** When the JNN-stats window is open, JNN-Engine shows only what you need to act (the moves, and the board when you build); the board, stock market, players, companies and explanations stay in JNN-stats, so nothing is shown twice. Opened alone, JNN-Engine shows everything as before. It switches by itself when JNN-stats is opened or closed.
+- **⇆ Arrange side by side** (in the header when JNN-stats is open): JNN-Engine on the left half of the screen, JNN-stats on the right. The first time, JNN-Engine opens on the left half by itself; after that it opens where you last put it.
+- **The map picker shows the track already on the board**, so you can see what a new tile connects to.
+
+### Fixed (edge-case review of the five tested titles)
+- Tile drawings: sharp curves were drawn as small loops; tiles with several cities showed only one (now placed by their own exits, e.g. 1846 Chicago); towns and other stops were missing on some tiles (1862); narrow gauge (dashed) and dual gauge are now told apart from standard track (1849: Kingdom of the Two Sicilies); the tile number is readable.
+- A live refresh could replace a test preview (testing only).
+
+### Needs 18xx-JNNstats 0.37.4
+JNN-stats 0.37.4 lists the possible moves only in JNN-Engine while it is open, and points to it in *Your turn, explained*.
+
 ## [0.6.1] - 2026-11-16 (beta)
 
 From a UX and completeness review before learning The Old Prince 1871.

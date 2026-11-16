@@ -2,7 +2,7 @@
 
 A JNN game window for [18xx.games](https://18xx.games): the game drawn the JNN way, in its own window beside the site and beside [18xx-JNNstats](https://github.com/mvhjim/18xx-jnnstats).
 
-**Status: 0.6.1 (beta).** Shows the game and can make every move found in the tested titles' finished games: shares, starting companies, bids and auctions, dividends, trains, tiles, stations and routes, private company powers, and title-specific steps (1817 loans, shorts, conversions, mergers and acquisitions; The Old Prince 1871 auctions, splits, Union Bank purchases, exchanges and the Hunslet), buying private companies, and bankruptcy as a last resort. **Sending is off by default:** in test mode every move is checked on a copy of the game and shown, but nothing is sent.
+**Status: 0.6.2 (beta).** Shows the game and can make every move found in the tested titles' finished games: shares, starting companies, bids and auctions, dividends, trains, tiles, stations and routes, private company powers, and title-specific steps (1817 loans, shorts, conversions, mergers and acquisitions; The Old Prince 1871 auctions, splits, Union Bank purchases, exchanges and the Hunslet), buying private companies, and bankruptcy as a last resort. **Sending is off by default:** in test mode every move is checked on a copy of the game and shown, but nothing is sent.
 
 ## Use
 
@@ -11,6 +11,10 @@ A JNN game window for [18xx.games](https://18xx.games): the game drawn the JNN w
 3. Pick your name under **I am** in the JNN-stats ⋯ menu: JNN-Engine uses the same settings (I am, privacy mode, Learning mode, colours).
 
 The 18xx.games page stays exactly as it is. If JNN-Engine ever fails or shows something wrong, play on the site.
+
+## Beside JNN-stats
+
+The two windows are made to be used side by side: **JNN-Engine on the left for the moves, JNN-stats on the right for everything else.** While JNN-stats is open, JNN-Engine shows only the moves (and the board when you build), and JNN-stats leaves out its list of possible moves, so nothing is shown twice. Press **⇆ Arrange side by side** in the JNN-Engine header to put both windows in place. Opened alone, JNN-Engine shows the full game.
 
 ## Making moves
 
