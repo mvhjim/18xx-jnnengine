@@ -107,7 +107,7 @@
   function arr(o) { if (nil(o)) return []; if (Array.isArray(o)) return o; if (has(o, 'to_a')) return o.$to_a(); return []; }
   function num(o) { var v = nil(o) ? null : Number(o); return v == null || isNaN(v) ? null : v; }
   function hget(h, k) { if (nil(h)) return null; try { var v = h['$[]'](k); if (nil(v) && Opal.Symbol) v = null; return nil(v) ? null : v; } catch (e) { return null; } }
-  var SENDABLE = ['pass', 'bid', 'par', 'buy_shares', 'sell_shares', 'dividend', 'buy_train', 'take_loan', 'payoff_loan', 'short', 'convert', 'merge', 'choose', 'assign', 'remove_token', 'discard_train', 'offer', 'split', 'buy_company', 'purchase_train'];
+  var SENDABLE = ['pass', 'bid', 'par', 'buy_shares', 'sell_shares', 'dividend', 'buy_train', 'take_loan', 'payoff_loan', 'short', 'convert', 'merge', 'choose', 'assign', 'remove_token', 'discard_train', 'offer', 'split', 'buy_company', 'purchase_train', 'bankrupt'];
   // the options for one entity in the current step; each is { group, label, h: action JSON (without id), amount?: {min, max, key} }
   function moveOptions(g, entity, acts) {
     var out = [], round = g.$round(), active = round.$active_step(), step = active, id = os(call(entity, 'id')), etype = truthy(call(entity, 'player?')) ? 'player' : truthy(call(entity, 'corporation?')) ? 'corporation' : truthy(call(entity, 'minor?')) ? 'minor' : call(entity, 'company?') ? 'company' : 'player';
@@ -331,6 +331,8 @@
     if (can('discard_train')) {
       arr(call(entity, 'trains')).forEach(function (t) { try { add('Discard a train', 'Discard the ' + nm(t) + ' train', mk('DiscardTrain', { train: t })); } catch (e) {} });
     }
+    // last, and on purpose at the end: allowed by the rules but rarely wise
+    if (can('bankrupt')) { try { add('Last resort', 'Declare bankruptcy', mk('Bankrupt', {})); } catch (e) {} }
     out.forEach(function (o) { Object.keys(o.h).forEach(function (k) { if (o.h[k] === undefined) delete o.h[k]; }); });
     return out;
   }
@@ -389,6 +391,7 @@
       else if (p1.cash === 0 && p0.cash > 0) W('info', actor + ' has no cash left after this.');
       if (p1.limit != null && p1.certs != null) { if (p1.certs > p1.limit) W('warn', actor + ' goes over the certificate limit (' + p1.certs + ' of ' + p1.limit + ').'); else if (p1.certs === p1.limit && p0.certs < p1.limit) W('info', actor + ' reaches the certificate limit (' + p1.limit + ').'); }
     }
+    if (h.type === 'bankrupt') W('warn', 'Bankruptcy is final in most titles: you (or the company) leave the game, and in some titles it ends the game for everyone. Read what will happen below.');
     if (h.type === 'short') W('info', 'While you hold a short you pay that company\'s dividends on the share, and you must buy it back later.');
     if (h.type === 'dividend' && h.kind === 'withhold') W('info', 'Withholding keeps the money in the company, but the share price usually falls.');
     if (h.type === 'pass' && /auction|bid/i.test(os(call(call(g.$round(), 'active_step'), 'class')))) W('info', 'Passing in an auction usually means you are out of this auction.');
@@ -415,6 +418,7 @@
     assign: 'Assigning puts a private company (or its power) to use.',
     remove_token: 'After a merger a company may have too many stations; choose which to give up.',
     discard_train: 'The company has more trains than it may keep; choose one to give up.',
+    bankrupt: 'Bankruptcy is the last resort when you cannot pay what the rules require; it is listed so that every legal move is here.',
     buy_company: 'A company may buy a private company from a player, at a price within the limits; the money goes to the seller.',
     offer: 'Offering puts a private company up for auction; the other players bid on it.',
     split: 'Splitting divides a big company into two; you then choose how.'
@@ -445,7 +449,7 @@
       if (o && o.amount) { var v = a[o.amount.key]; if (v == null || +v < o.amount.min || +v > o.amount.max) return false; h = JSON.parse(JSON.stringify(h)); h[o.amount.key] = v; }
       if (h.type !== a.type || String(h.entity) !== String(a.entity)) return false;
       var keys = { buy_shares: ['shares', 'purchase_for'], sell_shares: ['shares'], par: ['corporation', 'share_price'], dividend: ['kind'], buy_train: ['train', 'variant'], bid: ['company', 'minor', 'corporation'], pass: [],
-        take_loan: [], payoff_loan: [], short: ['corporation'], convert: [], merge: ['corporation', 'minor'], choose: ['choice'], offer: ['company'], buy_company: ['company'], purchase_train: [], split: ['corporation'], assign: ['target', 'target_type'], remove_token: ['city'], discard_train: ['train'] }[h.type] || [];
+        take_loan: [], payoff_loan: [], short: ['corporation'], convert: [], merge: ['corporation', 'minor'], choose: ['choice'], offer: ['company'], buy_company: ['company'], purchase_train: [], bankrupt: [], split: ['corporation'], assign: ['target', 'target_type'], remove_token: ['city'], discard_train: ['train'] }[h.type] || [];
       return keys.every(function (k) { var x = h[k], y = a[k]; if (k === 'shares') return shareKey(x) === shareKey(y); if (k === 'variant' && (y == null || x === y)) return true; return x == null && y == null || String(x) === String(y); });
     };
     eff.forEach(function (a) {
