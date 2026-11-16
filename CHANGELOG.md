@@ -1,6 +1,22 @@
 # Changelog
 All notable changes to this project are listed here. The format follows [Keep a Changelog](https://keepachangelog.com), and versions follow [Semantic Versioning](https://semver.org).
 
+## [0.6.0] - 2026-11-16 (beta)
+
+### Added
+- **Automatic tests on copies of real games (tranche J7):** [tests/run.js](tests/run.js) checks finished games in two ways: every real move was among JNN-Engine's choices, and every choice JNN-Engine offers at 8 positions per game is accepted by the rules engine. It only reads and pauses between games to go easy on the server, and keeps running in a hidden browser window.
+- **Beta:** a *Copy a problem report* button at the bottom of the window (version, title, round, step, settings and recent errors; the game number only if you tick it), and a [guide for testers](docs/BETA.md).
+- Tile choices show the hex's terrain cost (the most the lay can cost; some titles charge less for some tiles).
+
+### Fixed (found by the new tests)
+- Trains a company cannot pay for were offered. Now: offered only when it must buy one and the president may help (and then only the cheapest); a train above the company's cash that it could raise money for (1817 loans) is offered with a note.
+- Stations in cities the company is not connected to are marked as such (a home station needs no connection; titles such as 1862 have their own rules for London).
+- 1817: no tile offered on a mine; a bridge company is not offered a hex that already has a bridge.
+- 1862: the G Hudson dividend is offered only when the rules allow it.
+
+### Test results
+10 finished games (1817 3, 1846 1, 1862 2, The Old Prince 1871 2, 1849: Kingdom of the Two Sicilies 2): every real move found (6,507 of 6,507), sample replays 10 of 10 in each game, and every offered choice accepted, apart from the kinds the 18xx.games page also offers and checks only when the move is made (a tile that adds no new track, a station without a connection, a tile lay or train the company cannot pay for yet), which JNN-Engine marks where it can.
+
 ## [0.5.0] - 2026-11-16
 
 ### Added

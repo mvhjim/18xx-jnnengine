@@ -18,7 +18,7 @@
  */
 (function () {
   'use strict';
-  var VERSION = '0.5.0';
+  var VERSION = '0.6.0';
   var API_MAJOR = '1';                 // the JNN-API major version this code is written for
   var API_MIN = '1.1';                 // the oldest minor version it can use
   var FALLBACK_SHA = 'bfabede';        // a JNN-stats release known to work, used if the latest is incompatible
@@ -600,9 +600,10 @@
         var rots = arr(call(tile, 'legal_rotations')).map(num);
         // terrain and upgrade costs: a lay the company cannot pay for is shown with a note (a private company could still pay or discount it)
         var cost = null, bp = null, costNote = '', tooDear = false;
-        try { cost = num(g.$upgrade_cost(hex.$tile(), hex, ent, ent)); } catch (e) {}
+        // the terrain on the hex (mountains, water); some titles charge less for some tiles, so this is the most it costs
+        try { cost = arr(call(hex.$tile(), 'upgrades')).reduce(function (a, u) { return a + (num(call(u, 'cost')) || 0); }, 0); } catch (e) {}
         try { bp = num(g.$buying_power(ent)); } catch (e) { bp = num(call(ent, 'cash')); }
-        if (cost) { costNote = ' (costs ' + money(cost) + (bp != null && cost > bp ? ', more than the company has' : '') + ')'; tooDear = bp != null && cost > bp; }
+        if (cost) { costNote = ' (terrain ' + money(cost) + (bp != null && cost > bp ? ', more than the company has' : '') + ')'; tooDear = bp != null && cost > bp; }
         rots.forEach(function (r) {
           var h = { type: 'lay_tile', entity: ej.entity, entity_type: ej.entity_type, hex: hexId, tile: os(tile.$id()), rotation: r };
           out.push({ group: 'Tile on ' + hexId, label: 'Tile ' + os(tile.$name()) + ', rotation ' + (rots.indexOf(r) + 1) + ' of ' + rots.length + costNote, h: h, svg: tileSvg(tile, r, os(call(hex, 'layout')) || 'flat'), unsure: tooDear });
