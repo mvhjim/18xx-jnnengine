@@ -375,6 +375,7 @@
   function curEntity(g) { try { return g.$round().$active_step().$current_entity(); } catch (e) { return null; } }
   function stepFor(g, ent, act) { try { var st = g.$round().$step_for(ent, act); return nil(st) ? null : st; } catch (e) { return null; } }
   function entJson(ent) { var id = os(call(ent, 'id')); return { entity: isNaN(+id) ? id : +id, entity_type: truthy(call(ent, 'player?')) ? 'player' : truthy(call(ent, 'corporation?')) ? 'corporation' : truthy(call(ent, 'minor?')) ? 'minor' : 'company' }; }
+  function tokOwner(g, ent) { try { var o = g.$token_owner(ent); return nil(o) ? ent : o; } catch (e) { return ent; } }
   function tileCities(hex) { var t = call(hex, 'tile'); return t ? arr(call(t, 'cities')) : []; }
   // which hexes take a tile or a station now
   function mapTargets(g, ent, acts) {
@@ -382,7 +383,7 @@
     arr(g.$hexes()).forEach(function (hex) {
       var id = os(hex.$id()), k = '';
       if (ts) { try { if (truthy(ts.$available_hex(ent, hex)) && arr(ts.$upgradeable_tiles(ent, hex)).length) k += 't'; } catch (e) {} }
-      if (tk) { try { if (truthy(tk.$available_hex(ent, hex)) && tileCities(hex).some(function (c) { try { return truthy(c['$tokenable?'](ent)); } catch (e2) { return false; } })) k += 's'; } catch (e) {} }
+      if (tk) { try { if (truthy(tk.$available_hex(ent, hex)) && tileCities(hex).some(function (c) { try { return truthy(c['$tokenable?'](tokOwner(g, ent))); } catch (e2) { return false; } })) k += 's'; } catch (e) {} }
       if (k) out[id] = k;
     });
     return out;
@@ -405,7 +406,7 @@
       var tk = stepFor(g, ent, 'place_token'), toks = []; try { toks = arr(tk.$available_tokens(ent)); } catch (e) {}
       var owner = null; try { owner = g.$token_owner(ent); } catch (e) {}
       tileCities(hex).forEach(function (c, ci) {
-        try { if (!truthy(c['$tokenable?'](ent))) return; } catch (e) { return; }
+        try { if (!truthy(c['$tokenable?'](tokOwner(g, ent)))) return; } catch (e) { return; }
         var slot = null; try { slot = c.$get_slot(owner || ent); slot = nil(slot) ? null : num(slot); } catch (e) {}
         if (slot == null) { try { slot = arr(c.$tokens()).findIndex(function (x) { return nil(x); }); } catch (e) {} if (slot < 0) slot = 0; }
         var h = { type: 'place_token', entity: ej.entity, entity_type: ej.entity_type, city: os(c.$id()), slot: slot };
