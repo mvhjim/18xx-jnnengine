@@ -477,6 +477,8 @@
   // ---------- Automatic option test (J7) -------------------------------------------------------
   // At sampled positions of a game, try every choice JNN-Engine offers on a copy and check the rules engine accepts it.
   // This finds the opposite mistake to selfTest: offering a move that is not allowed.
+  // yield to the page without timers (browsers run timers only about once a minute in hidden windows)
+  function soon(fn) { try { var mc = new MessageChannel(); mc.port1.onmessage = function () { fn(); }; mc.port2.postMessage(0); } catch (e) { setTimeout(fn, 0); } }
   function optionTest(J, text, cfg) {
     cfg = cfg || {}; var positions = cfg.positions || 8, maxOpts = cfg.maxOpts || 14;
     var raw = JSON.parse(text), acts0 = raw.actions || [], cand = [];
@@ -514,7 +516,7 @@
             res.byType[h.type] = (res.byType[h.type] || 0) + 1; if (res.bad.length < 25) res.bad.push({ k: jb.k, label: jb.o.label, err: (e.message || String(e)).slice(0, 160), h: JSON.stringify(h).slice(0, 200) }); }
         }
         if (i >= jobs.length) { res.ms = Date.now() - t0; resolve(res); return; }
-        setTimeout(next, 0);
+        soon(next);
       })();
     });
   }
