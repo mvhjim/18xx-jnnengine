@@ -107,7 +107,7 @@
   function arr(o) { if (nil(o)) return []; if (Array.isArray(o)) return o; if (has(o, 'to_a')) return o.$to_a(); return []; }
   function num(o) { var v = nil(o) ? null : Number(o); return v == null || isNaN(v) ? null : v; }
   function hget(h, k) { if (nil(h)) return null; try { var v = h['$[]'](k); if (nil(v) && Opal.Symbol) v = null; return nil(v) ? null : v; } catch (e) { return null; } }
-  var SENDABLE = ['pass', 'bid', 'par', 'buy_shares', 'sell_shares', 'dividend', 'buy_train'];
+  var SENDABLE = ['pass', 'bid', 'par', 'buy_shares', 'sell_shares', 'dividend', 'buy_train', 'take_loan', 'payoff_loan', 'short', 'convert', 'merge', 'choose', 'assign', 'remove_token', 'discard_train'];
   // the options for one entity in the current step; each is { group, label, h: action JSON (without id), amount?: {min, max, key} }
   function moveOptions(g, entity, acts) {
     var out = [], round = g.$round(), active = round.$active_step(), step = active, id = os(call(entity, 'id')), etype = truthy(call(entity, 'player?')) ? 'player' : truthy(call(entity, 'corporation?')) ? 'corporation' : truthy(call(entity, 'minor?')) ? 'minor' : call(entity, 'company?') ? 'company' : 'player';
@@ -191,11 +191,17 @@
     }
     if (can('bid')) {
       var cos = []; try { cos = arr(has(step, 'available') ? step.$available() : has(step, 'visible_corporations') ? step.$visible_corporations() : has(step, 'companies') ? step.$companies() : []); } catch (e) {}
+      if (!cos.length && has(step, 'auctioning_corporation')) {
+        // an auction of a company: the one being auctioned, or (when none is) the companies not yet started
+        var au = null; try { au = step.$auctioning_corporation(); } catch (e) {}
+        if (!nil(au)) cos = [au]; else g.$corporations().forEach(function (c) { if (!truthy(call(c, 'ipoed')) && !truthy(call(c, 'closed?'))) cos.push(c); });
+      }
       cos.forEach(function (co) {
         var tp = truthy(call(co, 'company?')) ? 'company' : truthy(call(co, 'minor?')) ? 'minor' : 'corporation', h = base('bid'); h[tp] = os(co.$id());
         if (has(step, 'min_bid')) {
           var min = null, max = null; try { min = num(step.$min_bid(co)); } catch (e) {} try { max = num(step.$max_bid(entity, co)); } catch (e) {}
           if (min == null) return; h.price = min;
+          if (max != null && max < min) return;
           add('Bid', 'Bid on ' + os(co.$name()) + ' (at least ' + money(min) + ')', h, { key: 'price', min: min, max: max != null ? max : min });
         } else {
           // a draft: take the company at its own price
@@ -204,6 +210,40 @@
         }
       });
     }
+    // ---------- special moves (J5): loans, shorts, conversions, mergers, choices, assignments, tokens, discards
+    var mk = function (cls, opts) { var A = Opal.Engine.Action[cls]; if (!A) return null; var h = A.$new(entity, Opal.hash(opts || {})).$to_h().$to_n(); delete h.id; delete h.created_at; delete h.user; return h; };
+    var nm = function (o) { return os(call(o, 'name')) || os(call(o, 'id')); };
+    if (can('take_loan')) { try { var ln = arr(g.$loans())[0]; var hl = mk('TakeLoan', ln ? { loan: ln } : {}); var lv = num(call(g, 'loan_value')); if (hl) add('Loans', has(step, 'take_loan_text') ? os(step.$take_loan_text()) : 'Take a loan' + (lv ? ' (' + money(lv) + ')' : ''), hl); } catch (e) {} }
+    if (can('payoff_loan')) { try { var pl = arr(call(entity, 'loans'))[0]; var hp = mk('PayoffLoan', pl ? { loan: pl } : {}); if (hp) add('Loans', has(step, 'payoff_loan_text') ? os(step.$payoff_loan_text()) : 'Pay off a loan', hp); } catch (e) {} }
+    if (can('short')) {
+      g.$corporations().forEach(function (c) { try { if (truthy(step['$can_short?'](entity, c))) add('Short a share', 'Short ' + nm(c) + ' (sell a share you do not own)', mk('Short', { corporation: c })); } catch (e) {} });
+    }
+    if (can('convert')) { try { add('Convert', 'Convert ' + nm(entity) + (num(call(entity, 'total_shares')) ? ' (now ' + num(entity.$total_shares()) + ' shares)' : ''), mk('Convert', {})); } catch (e) {} }
+    if (can('merge')) {
+      var subj = has(step, 'auctioning_corporation') ? step.$auctioning_corporation() : entity, targets = [];
+      try { targets = arr(has(step, 'mergeable') ? step.$mergeable(nil(subj) ? entity : subj) : []); } catch (e) {}
+      var mname = 'Merge'; try { if (has(step, 'merge_name')) mname = os(step.$merge_name(entity)) || mname; } catch (e) {}
+      targets.forEach(function (t) { try { var key = truthy(call(t, 'minor?')) ? 'minor' : 'corporation', o = {}; o[key] = t; add(mname, mname + ' with ' + nm(t), mk('Merge', o)); } catch (e) {} });
+    }
+    if (can('choose')) {
+      try {
+        var ch = step.$choices(), cname = has(step, 'choice_name') ? os(step.$choice_name()) : 'Choose';
+        if (has(step, 'choice_is_amount?') && truthy(step['$choice_is_amount?']())) { var mm = arr(ch); add(cname, cname, Object.assign(mk('Choose', { choice: mm[0] }), {}), { key: 'choice', min: num(mm[0]), max: num(mm[1]) }); }
+        else if (has(ch, 'keys')) arr(ch.$keys()).forEach(function (k) { add(cname || 'Choose', os(ch['$[]'](k)) || os(k), mk('Choose', { choice: k })); });
+        else arr(ch).forEach(function (k) { add(cname || 'Choose', os(k), mk('Choose', { choice: k })); });
+      } catch (e) {}
+    }
+    if (can('assign')) {
+      var tg = []; try { tg = has(step, 'available_subsidiaries') ? arr(step.$available_subsidiaries(entity)) : has(step, 'auctioning_corporation') && !nil(step.$auctioning_corporation()) ? [step.$auctioning_corporation()] : []; } catch (e) {}
+      tg.forEach(function (t) { try { var v = num(call(t, 'value')); add('Assign', (truthy(call(t, 'company?')) ? 'Use ' + nm(t) + ' (' + money(v) + ')' : 'Offer ' + nm(t) + ' for sale'), mk('Assign', { target: t })); } catch (e) {} });
+    }
+    if (can('remove_token')) {
+      arr(call(entity, 'tokens')).forEach(function (t) { try { var c = call(t, 'city'); if (!c) return; var hx = os(call(call(c, 'hex'), 'id')); add('Remove a station', 'Remove the station in ' + hx, mk('RemoveToken', { city: c, slot: arr(c.$tokens()).indexOf(t) })); } catch (e) {} });
+    }
+    if (can('discard_train')) {
+      arr(call(entity, 'trains')).forEach(function (t) { try { add('Discard a train', 'Discard the ' + nm(t), mk('DiscardTrain', { train: t })); } catch (e) {} });
+    }
+    out.forEach(function (o) { Object.keys(o.h).forEach(function (k) { if (o.h[k] === undefined) delete o.h[k]; }); });
     return out;
   }
   // Try a move on a fresh copy of the game: the new log lines, the JSON the page would send, or the engine's reason it is not allowed
@@ -240,7 +280,8 @@
     var shareKey = function (ids) { return (ids || []).map(function (id) { try { var sh = g.$share_by_id(id), own = sh.$owner(); return os(sh.$corporation().$id()) + ':' + num(sh.$percent()) + ':' + (own === g.$share_pool() ? 'm' : own === sh.$corporation() ? 'i' : 'o'); } catch (e) { return id; } }).sort().join(','); };
     var same = function (h, a) {
       if (h.type !== a.type || String(h.entity) !== String(a.entity)) return false;
-      var keys = { buy_shares: ['shares'], sell_shares: ['shares'], par: ['corporation', 'share_price'], dividend: ['kind'], buy_train: ['train', 'variant'], bid: ['company', 'minor', 'corporation'], pass: [] }[h.type] || [];
+      var keys = { buy_shares: ['shares'], sell_shares: ['shares'], par: ['corporation', 'share_price'], dividend: ['kind'], buy_train: ['train', 'variant'], bid: ['company', 'minor', 'corporation'], pass: [],
+        take_loan: [], payoff_loan: [], short: ['corporation'], convert: [], merge: ['corporation', 'minor'], choose: ['choice'], assign: ['target', 'target_type'], remove_token: ['city'], discard_train: ['train'] }[h.type] || [];
       return keys.every(function (k) { var x = h[k], y = a[k]; if (k === 'shares') return shareKey(x) === shareKey(y); if (k === 'variant' && (y == null || x === y)) return true; return x == null && y == null || String(x) === String(y); });
     };
     eff.forEach(function (a) {
@@ -279,6 +320,32 @@
   var MAPACTS = ['lay_tile', 'place_token', 'run_routes'];
   // a throwaway copy of the game for questions that change tiles (rotations) or run the auto-router
   function qgame(J) { var n = E.game.raw.actions.length; if (!E.q || E.q.n !== n) E.q = { n: n, g: J.loadGame(JSON.stringify(E.game.raw)) }; return E.q.g; }
+  // the entity whose map moves are shown: the one to act, or a private company whose power is being used
+  function mapEntity(g) {
+    var c = curEntity(g); if (!E.mapEnt) return c;
+    try { var e2 = g.$get(E.mapEnt.type, E.mapEnt.id); if (!nil(e2) && arr(g.$round().$actions_for(e2)).map(os).some(function (a) { return MAPACTS.indexOf(a) >= 0; })) return e2; } catch (e) {}
+    E.mapEnt = null; return c;
+  }
+  // moves the player can make for others right now: the companies they run (1817 loans and buy-backs in a
+  // stock round, for example) and the powers of private companies they or their company own
+  function extraOptions(g, ent) {
+    var out = [], round = g.$round(), seen = {};
+    var meta = function (a) { return ['end_game', 'message', 'undo', 'redo', 'log', 'pass', 'bankrupt'].indexOf(a) >= 0 || /^program_/.test(a); };
+    var others = [];
+    if (truthy(call(ent, 'player?'))) arr(g.$corporations()).forEach(function (c) { if (call(c, 'owner') === ent) others.push(c); });
+    var owners = [ent]; var pres = call(ent, 'owner'); if (pres && truthy(call(pres, 'player?'))) owners.push(pres);
+    owners.forEach(function (o) { arr(call(o, 'companies')).forEach(function (co) { others.push(co); }); });
+    others.forEach(function (x) {
+      var key = os(call(x, 'id')); if (seen[key]) return; seen[key] = 1;
+      var acts = []; try { acts = arr(round.$actions_for(x)).map(os).filter(function (a) { return !meta(a); }); } catch (e) {}
+      if (!acts.length) return;
+      var isCo = truthy(call(x, 'company?')), who = os(call(x, 'name'));
+      moveOptions(g, x, acts.filter(function (a) { return MAPACTS.indexOf(a) < 0; })).forEach(function (o) { if (o.h.type === 'pass') return; o.group = (isCo ? 'Use ' : 'For ') + who + ': ' + o.group; out.push(o); });
+      if (acts.some(function (a) { return MAPACTS.indexOf(a) >= 0; })) out.push({ group: (isCo ? 'Use ' : 'For ') + who, label: (isCo ? 'Use ' + who + ' on the map' : 'Show ' + who + '\'s map moves'), h: {}, mapUse: { type: isCo ? 'company' : 'corporation', id: key, key: key } });
+    });
+    if (E.mapEnt) out.push({ group: 'Map', label: 'Back to the normal map moves', h: {}, mapUse: {} });
+    return out;
+  }
   function curEntity(g) { try { return g.$round().$active_step().$current_entity(); } catch (e) { return null; } }
   function stepFor(g, ent, act) { try { var st = g.$round().$step_for(ent, act); return nil(st) ? null : st; } catch (e) { return null; } }
   function entJson(ent) { var id = os(call(ent, 'id')); return { entity: isNaN(+id) ? id : +id, entity_type: truthy(call(ent, 'player?')) ? 'player' : truthy(call(ent, 'corporation?')) ? 'corporation' : truthy(call(ent, 'minor?')) ? 'minor' : 'company' }; }
@@ -368,8 +435,9 @@
     } catch (e) { finished = true; clearTimeout(stop); done(null, e.message || String(e)); }
   }
   function mapMovesHtml(J, d, acts) {
+    var g = qgame(J), ent = mapEntity(g); if (!ent) return '';
+    if (ent !== curEntity(g)) acts = arr(g.$round().$actions_for(ent)).map(os);
     var ma = MAPACTS.filter(function (a) { return acts.indexOf(a) >= 0; }); if (!ma.length) return '';
-    var g = qgame(J), ent = curEntity(g); if (!ent) return '';
     var h = '';
     if (ma.indexOf('lay_tile') >= 0 || ma.indexOf('place_token') >= 0) {
       var targets = {}; try { targets = mapTargets(g, ent, acts); } catch (e) {}
@@ -383,7 +451,7 @@
   function showHexOptions(J, hexId) {
     var doc = w.document, box = doc.getElementById('hexopts'); if (!box) return;
     E.selHex = hexId; Array.prototype.forEach.call(doc.querySelectorAll('.hx'), function (p) { p.classList.toggle('sel', p.getAttribute('data-hex') === hexId); });
-    var g = qgame(J), ent = curEntity(g), opts = [];
+    var g = qgame(J), ent = mapEntity(g), opts = [];
     try { opts = hexOptions(g, ent, hexId, E.targets[hexId] || ''); } catch (e) { box.innerHTML = '<p class="note">Could not read the choices: ' + esc(e.message) + '</p>'; return; }
     if (!opts.length) { box.innerHTML = '<p class="note">Nothing can be placed on ' + esc(hexId) + ' now.</p>'; return; }
     var base = E.opts.length; opts.forEach(function (o) { E.opts.push(o); });
@@ -423,6 +491,7 @@
     if (!ent) return '';
     var acts = []; try { acts = arr(g.$round().$actions_for(ent)).map(os); } catch (e) { try { acts = arr(step.$actions(ent)).map(os); } catch (e2) {} }
     var opts = []; try { opts = moveOptions(g, ent, acts); } catch (e) { return '<p class="note">Could not read the choices: ' + esc(e.message) + '</p>'; }
+    try { opts = opts.concat(extraOptions(g, ent)); } catch (eX) {}
     E.opts = opts;
     var other = acts.filter(function (a) { return SENDABLE.indexOf(a) < 0 && MAPACTS.indexOf(a) < 0 && ['end_game', 'message', 'undo', 'redo', 'log', 'bankrupt'].indexOf(a) < 0 && !/^program_/.test(a); });
     var groups = []; opts.forEach(function (o, i) { var gr = groups.filter(function (x) { return x.name === o.group; })[0]; if (!gr) { gr = { name: o.group, items: [] }; groups.push(gr); } gr.items.push(i); });
@@ -437,6 +506,7 @@
   }
   function confirmBox(J, i) {
     var doc = w.document, o = E.opts[i]; if (!o) return;
+    if (o.mapUse) { E.mapEnt = o.mapUse.key ? o.mapUse : null; E.selHex = null; draw(J); return; }
     var h = JSON.parse(JSON.stringify(o.h));
     if (o.amount) { var inp = doc.querySelector('.amt[data-i="' + i + '"]'), v = Math.round(+inp.value); if (!(v >= o.amount.min && v <= o.amount.max)) { alertBox('Choose an amount between ' + o.amount.min + ' and ' + o.amount.max + '.'); return; } h[o.amount.key] = v; }
     var old = doc.getElementById('cbox'); if (old) old.remove();
