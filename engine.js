@@ -596,9 +596,14 @@
       tiles.forEach(function (tile) {
         // the same rotations the site offers; its "new track" rule is only checked when the tile is laid (the confirmation shows it)
         var rots = arr(call(tile, 'legal_rotations')).map(num);
+        // terrain and upgrade costs: a lay the company cannot pay for is shown with a note (a private company could still pay or discount it)
+        var cost = null, bp = null, costNote = '', tooDear = false;
+        try { cost = num(g.$upgrade_cost(hex.$tile(), hex, ent, ent)); } catch (e) {}
+        try { bp = num(g.$buying_power(ent)); } catch (e) { bp = num(call(ent, 'cash')); }
+        if (cost) { costNote = ' (costs ' + money(cost) + (bp != null && cost > bp ? ', more than the company has' : '') + ')'; tooDear = bp != null && cost > bp; }
         rots.forEach(function (r) {
           var h = { type: 'lay_tile', entity: ej.entity, entity_type: ej.entity_type, hex: hexId, tile: os(tile.$id()), rotation: r };
-          out.push({ group: 'Tile on ' + hexId, label: 'Tile ' + os(tile.$name()) + ', rotation ' + (rots.indexOf(r) + 1) + ' of ' + rots.length, h: h, svg: tileSvg(tile, r, os(call(hex, 'layout')) || 'flat') });
+          out.push({ group: 'Tile on ' + hexId, label: 'Tile ' + os(tile.$name()) + ', rotation ' + (rots.indexOf(r) + 1) + ' of ' + rots.length + costNote, h: h, svg: tileSvg(tile, r, os(call(hex, 'layout')) || 'flat'), unsure: tooDear });
         });
       });
     }
