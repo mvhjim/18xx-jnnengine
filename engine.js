@@ -86,6 +86,7 @@
     return J.fetchGameText(gid).then(function (text) {
       var raw = JSON.parse(text); if (!raw.actions) throw new Error('game ' + gid + ' not found');
       return J.ensureTitle(raw.title).then(function () {
+        if (E.fixed) return; // a test preview started meanwhile: keep it
         if (E.game && E.game.raw.actions.length && raw.actions.length > E.game.raw.actions.length && raw.actions[E.game.raw.actions.length - 1].id === E.game.raw.actions[E.game.raw.actions.length - 1].id) {
           if (J.applyActions(E.game.g, raw.actions.slice(E.game.raw.actions.length))) { E.game.raw = raw; return; }
         }
