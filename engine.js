@@ -550,7 +550,7 @@
   }
 
   function cycle(force) {
-    if (!w || w.closed) { clearInterval(E.timer); return Promise.resolve(); }
+    if (!w || w.closed) { clearInterval(E.timer); unsubscribe(); return Promise.resolve(); }
     if (E.busy) return E.busy;
     E.busy = pickStats().then(loadStats).then(function (J) {
       var before = E.game ? E.game.raw.actions.length : -1;
@@ -575,6 +575,7 @@
     } catch (e) { later(); }
   }
   var laterT = null; function later() { if (laterT) return; laterT = setTimeout(function () { laterT = null; cycle(true); }, 1500); }
+  function unsubscribe() { try { if (E.subFn && window.MessageBus) window.MessageBus.unsubscribe('/game/' + gid, E.subFn); } catch (e) {} E.subFn = null; }
   function subscribe() {
     var MB = window.MessageBus; if (!MB || !MB.subscribe) return;
     if (E.subFn && (MB.callbacks || []).some(function (c) { return c.func === E.subFn; })) return;
