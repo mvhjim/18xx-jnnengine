@@ -114,6 +114,8 @@
     var base = function (type) { return { type: type, entity: isNaN(+id) ? id : +id, entity_type: etype }; };
     var money = function (v) { try { return os(g.$format_currency(v)); } catch (e) { return String(v); } };
     var add = function (group, label, h, amount) { out.push({ group: group, label: label, h: h, amount: amount || null }); };
+    var mk = function (cls, opts) { var A = Opal.Engine.Action[cls]; if (!A) return null; var h = A.$new(entity, Opal.hash(opts || {})).$to_h().$to_n(); delete h.id; delete h.created_at; delete h.user; return h; };
+    var nm = function (o) { return os(call(o, 'name')) || os(call(o, 'id')); };
     var can = function (a) { if (acts.indexOf(a) < 0) return false; var st = null; try { st = round.$step_for(entity, a); } catch (e) {} step = nil(st) ? active : st; return true; };
     if (can('pass')) add('Pass', 'Pass', base('pass'));
     if (can('buy_shares')) {
@@ -133,6 +135,24 @@
         try { arr(g.$share_pool().$shares_by_corporation()['$[]'](c)).forEach(function (s) { tryShare(s, 'market'); }); } catch (e) {}
         try { if (!truthy(call(c, 'ipo_is_treasury?'))) arr(call(c, 'treasury_shares')).filter(function (s) { return call(s, 'buyable') !== false; }).forEach(function (s) { tryShare(s, 'treasury'); }); } catch (e) {}
       });
+      // a private company exchanged for a share
+      if (etype === 'company') {
+        try {
+          var ab = g.$abilities(entity, 'exchange');
+          if (!nil(ab)) {
+            var from = arr(call(ab, 'from')).map(os), own = call(entity, 'owner'), exs = {};
+            var tryEx = function (sh, src) { if (!sh || nil(sh)) return; try { if (!has(step, 'can_gain?') || !truthy(step['$can_gain?'](own, sh, Opal.hash({ exchange: true })))) return; } catch (e) { return; }
+              var hh = mk('BuyShares', { shares: sh }); var k2 = os(sh.$corporation().$name()) + src; if (exs[k2]) return; exs[k2] = 1;
+              add('Use ' + nm(entity), 'Exchange ' + nm(entity) + ' for a ' + os(sh.$corporation().$name()) + ' ' + src + ' share', hh); };
+            arr(g.$exchange_corporations(ab)).forEach(function (c) {
+              var ss = arr(c.$shares());
+              if (from.indexOf('ipo') >= 0) tryEx(ss.filter(function (x) { return !truthy(call(x, 'president')); })[0], os(g.$ipo_name(c)) || 'IPO');
+              if (from.indexOf('market') >= 0) tryEx(arr(g.$share_pool().$shares_by_corporation()['$[]'](c))[0], 'market');
+              if (from.indexOf('reserved') >= 0) tryEx(arr(call(c, 'reserved_shares'))[0], 'reserved');
+            });
+          }
+        } catch (e) {}
+      }
       // a company buying back (redeeming) its own shares
       if (etype === 'corporation' && has(step, 'redeemable_shares')) {
         try { arr(step.$redeemable_shares(entity)).forEach(function (b) { var h = base('buy_shares'); h.shares = arr(b.$shares()).map(function (x) { return os(x.$id()); }); h.percent = num(b.$percent()); add('Buy back shares', 'Buy back ' + h.percent + '% (' + money(b.$price()) + ')', h); }); } catch (e) {}
@@ -211,8 +231,6 @@
       });
     }
     // ---------- special moves (J5): loans, shorts, conversions, mergers, choices, assignments, tokens, discards
-    var mk = function (cls, opts) { var A = Opal.Engine.Action[cls]; if (!A) return null; var h = A.$new(entity, Opal.hash(opts || {})).$to_h().$to_n(); delete h.id; delete h.created_at; delete h.user; return h; };
-    var nm = function (o) { return os(call(o, 'name')) || os(call(o, 'id')); };
     if (can('take_loan')) { try { var ln = arr(g.$loans())[0]; var hl = mk('TakeLoan', ln ? { loan: ln } : {}); var lv = num(call(g, 'loan_value')); if (hl) add('Loans', has(step, 'take_loan_text') ? os(step.$take_loan_text()) : 'Take a loan' + (lv ? ' (' + money(lv) + ')' : ''), hl); } catch (e) {} }
     if (can('payoff_loan')) { try { var pl = arr(call(entity, 'loans'))[0]; var hp = mk('PayoffLoan', pl ? { loan: pl } : {}); if (hp) add('Loans', has(step, 'payoff_loan_text') ? os(step.$payoff_loan_text()) : 'Pay off a loan', hp); } catch (e) {} }
     if (can('short')) {
@@ -233,12 +251,20 @@
         else arr(ch).forEach(function (k) { add(cname || 'Choose', os(k), mk('Choose', { choice: k })); });
       } catch (e) {}
     }
-    if (can('assign')) {
+    if (can('assign') && etype === 'company') {
+      // a private company's power: assigned to a hex (a bridge, a port, ...) or to a company
+      try { arr(g.$hexes()).forEach(function (hx) { try { if (has(step, 'available_hex') && truthy(step.$available_hex(entity, hx))) add('Use ' + nm(entity), 'Assign ' + nm(entity) + ' to ' + os(hx.$id()) + (os(call(hx, 'location_name')) ? ' (' + os(hx.$location_name()) + ')' : ''), mk('Assign', { target: hx })); } catch (e2) {} }); } catch (e) {}
+      try { if (has(step, 'assignable_corporations')) arr(step.$assignable_corporations(entity)).forEach(function (c) { add('Use ' + nm(entity), 'Assign ' + nm(entity) + ' to ' + nm(c), mk('Assign', { target: c })); }); } catch (e) {}
+    } else if (can('assign')) {
       var tg = []; try { tg = has(step, 'available_subsidiaries') ? arr(step.$available_subsidiaries(entity)) : has(step, 'auctioning_corporation') && !nil(step.$auctioning_corporation()) ? [step.$auctioning_corporation()] : []; } catch (e) {}
       tg.forEach(function (t) { try { var v = num(call(t, 'value')); add('Assign', (truthy(call(t, 'company?')) ? 'Use ' + nm(t) + ' (' + money(v) + ')' : 'Offer ' + nm(t) + ' for sale'), mk('Assign', { target: t })); } catch (e) {} });
     }
     if (can('remove_token')) {
-      arr(call(entity, 'tokens')).forEach(function (t) { try { var c = call(t, 'city'); if (!c) return; var hx = os(call(call(c, 'hex'), 'id')); add('Remove a station', 'Remove the station in ' + hx, mk('RemoveToken', { city: c, slot: arr(c.$tokens()).indexOf(t) })); } catch (e) {} });
+      // after a merger the surviving company may remove its own stations or those of the companies it took over
+      var toks = arr(call(entity, 'tokens')); try { if (has(step, 'acquired_corps')) arr(step.$acquired_corps()).forEach(function (c) { toks = toks.concat(arr(call(c, 'tokens'))); }); } catch (e) {}
+      toks.forEach(function (t) { try { var c = call(t, 'city'); if (!c || !truthy(call(t, 'used'))) return; var hx = os(call(call(c, 'hex'), 'id'));
+        if (has(step, 'available_hex')) { try { if (!truthy(step.$available_hex(entity, c.$hex()))) return; } catch (e3) {} }
+        var tc = call(t, 'corporation'); hx += tc && tc !== entity ? ' (' + nm(tc) + '\'s)' : ''; add('Remove a station', 'Remove the station in ' + hx, mk('RemoveToken', { city: c, slot: arr(c.$tokens()).indexOf(t) })); } catch (e) {} });
     }
     if (can('discard_train')) {
       arr(call(entity, 'trains')).forEach(function (t) { try { add('Discard a train', 'Discard the ' + nm(t), mk('DiscardTrain', { train: t })); } catch (e) {} });
