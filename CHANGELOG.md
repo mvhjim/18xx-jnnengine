@@ -1,6 +1,11 @@
 # Changelog
 All notable changes to this project are listed here. The format follows [Keep a Changelog](https://keepachangelog.com), and versions follow [Semantic Versioning](https://semver.org).
 
+## [0.6.3] - 2026-11-16 (beta)
+
+### Fixed
+- After a jsDelivr outage the CDN kept answering "not found" for the short version code of the latest JNN-stats, so JNN-Engine could not start. JNN-Engine now uses full version codes and, if a version still cannot be loaded, tries the known-good one and then the latest, instead of stopping.
+
 ## [0.6.2] - 2026-11-16 (beta)
 
 ### Added

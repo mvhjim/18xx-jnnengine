@@ -1,1 +1,1 @@
-window.__jnnEngineLatest = '0.6.2';
+window.__jnnEngineLatest = '0.6.3';

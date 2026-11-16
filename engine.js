@@ -18,10 +18,10 @@
  */
 (function () {
   'use strict';
-  var VERSION = '0.6.2';
+  var VERSION = '0.6.3';
   var API_MAJOR = '1';                 // the JNN-API major version this code is written for
   var API_MIN = '1.1';                 // the oldest minor version it can use
-  var FALLBACK_SHA = '8317a84';        // a JNN-stats release known to work, used if the latest is incompatible
+  var FALLBACK_SHA = '8317a841c453a876c4bd25d8b8a7efc5e017885b';        // a JNN-stats release known to work, used if the latest is incompatible
   var STATS_CDN = 'https://cdn.jsdelivr.net/gh/mvhjim/18xx-jnnstats@';
   var REFRESH_MS = 60000;              // backup check only; new moves arrive through the site's own push channel
   // Titles tested with JNN-Engine. Others are shown, but sending moves (in later versions) stays off.
@@ -59,8 +59,17 @@
     }, function () { E.pinned = true; return (E.statsSha = FALLBACK_SHA); });
   }
   // 2. Load it as a library (its own state; a JNN-stats window on this page is not touched)
+  // if the CDN cannot deliver that version (it happens, e.g. after an outage), try the known-good one, then the latest
   function loadStats(sha) {
     if (E.J && E.J.__sha === sha) return Promise.resolve(E.J);
+    var tries = [sha, FALLBACK_SHA, 'main'].filter(function (x, i, A) { return x && A.indexOf(x) === i; }), i = 0;
+    var next = function (err) {
+      if (i >= tries.length) return Promise.reject(err);
+      var s2 = tries[i++]; return loadStats1(s2).then(function (J) { if (s2 !== sha) { E.statsSha = s2; E.pinned = s2 === FALLBACK_SHA; } return J; }, next);
+    };
+    return next(new Error('could not load JNN-stats'));
+  }
+  function loadStats1(sha) {
     return new Promise(function (res, rej) {
       var done = function (ev) { window.removeEventListener('jnnstats:ready', done); var J = ev.detail; J.__sha = sha; E.J = J; res(J); };
       window.addEventListener('jnnstats:ready', done);
