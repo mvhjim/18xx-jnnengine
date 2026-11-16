@@ -745,10 +745,13 @@
     E.opts = opts;
     var other = acts.filter(function (a) { return SENDABLE.indexOf(a) < 0 && MAPACTS.indexOf(a) < 0 && ['end_game', 'message', 'undo', 'redo', 'log', 'bankrupt'].indexOf(a) < 0 && !/^program_/.test(a); });
     var groups = []; opts.forEach(function (o, i) { var gr = groups.filter(function (x) { return x.name === o.group; })[0]; if (!gr) { gr = { name: o.group, items: [] }; groups.push(gr); } gr.items.push(i); });
+    var shownHelp = {};
     var h = groups.map(function (gr) {
-      var tp = opts[gr.items[0]] && opts[gr.items[0]].h && opts[gr.items[0]].h.type, hl = E.J && E.J.learnLevel() && HELP[tp] ? '<div class="help">' + esc(HELP[tp]) + '</div>' : '';
+      var tp = opts[gr.items[0]] && opts[gr.items[0]].h && opts[gr.items[0]].h.type, ht = HELP[tp];
+      if (tp === 'pass') { var rn = ''; try { rn = os(E.game.g.$round().$name()); } catch (e) {} ht = /auction|draft/i.test(rn) ? 'Pass: do not bid or buy now. In an auction this usually means you are out of it.' : /operating/i.test(rn) ? 'Pass: skip this part of the company\'s turn (for example no tile, or no train).' : HELP.pass; }
+      var hl = E.J && E.J.learnLevel() && ht && !shownHelp[tp] ? '<div class="help">' + esc(ht) + '</div>' : ''; if (hl) shownHelp[tp] = 1;
       return '<div class="mg"><div class="mgh">' + esc(gr.name) + '</div>' + hl + gr.items.map(function (i) { var o = opts[i];
-        return '<span class="mo">' + (o.amount ? '<input type="number" class="amt" data-i="' + i + '" min="' + o.amount.min + '" max="' + o.amount.max + '" value="' + o.amount.min + '">' : '') + '<button class="pill jmv" data-i="' + i + '">' + esc(o.label) + '</button></span>'; }).join('') + '</div>';
+        return '<span class="mo">' + (o.amount ? '<input type="number" class="amt" data-i="' + i + '" min="' + o.amount.min + '" max="' + o.amount.max + '" value="' + o.amount.min + '">' : '') + '<button class="pill jmv' + (o.unsure ? ' unsure' : '') + '" data-i="' + i + '"' + (o.unsure ? ' title="The rules check this only when the move is made"' : '') + '>' + esc(o.label) + '</button></span>'; }).join('') + '</div>';
     }).join('');
     try { h += mapMovesHtml(E.J, d, acts); } catch (eM) { h += '<p class="note">Could not read the map choices: ' + esc(eM.message) + '</p>'; }
     if (other.length) h += '<p class="note">Also possible now, but not in JNN-Engine yet (use the 18xx.games page): ' + other.map(function (a) { return esc(a.replace(/_/g, ' ')); }).join(', ') + '.</p>';
@@ -795,18 +798,19 @@
   var CSS_EXTRA = [
     'body{margin:0}header.je{position:sticky;top:0;z-index:5;background:var(--surface-0);border-bottom:1px solid var(--grid);padding:8px 14px}',
     '.je h1{font-size:18px;margin:0 8px 0 0;display:inline}.je .kv{margin-right:12px;font-size:13px}.je .ro{display:inline-block;font-size:11px;padding:2px 8px;border-radius:10px;background:var(--grid);margin-left:6px}',
-    '.jw{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(300px,1fr);gap:12px;padding:12px}@media (max-width:900px){.jw{grid-template-columns:1fr}}',
+    '.jw{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(300px,1fr);gap:12px;padding:12px}@media (max-width:900px){.jw{grid-template-columns:1fr}.jw>.jcol:last-child{order:-1}}',
     '.jcol{display:flex;flex-direction:column;gap:12px;min-width:0}.jb svg{width:100%;height:auto}',
     '.act{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}.act button{opacity:.6;cursor:not-allowed}',
     '.yt{border:2px solid var(--accent);border-radius:12px}.note{font-size:12px;color:var(--text-secondary)}',
     '.mine td{font-weight:650}.ft{padding:4px 14px 14px;font-size:11.5px;color:var(--text-muted)}',
-    '.mg{margin:6px 0}.mgh{font-size:11.5px;color:var(--text-secondary);margin-bottom:3px}.mo{display:inline-flex;gap:4px;margin:0 6px 6px 0;align-items:center}.amt{width:80px;padding:3px 5px;border-radius:6px;border:1px solid var(--grid);background:var(--surface-1);color:var(--text-primary)}',
+    '.mg{margin:6px 0}.mgh{font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:4px}.mo{display:inline-flex;gap:4px;margin:0 6px 6px 0;align-items:center}.amt{width:80px;padding:3px 5px;border-radius:6px;border:1px solid var(--grid);background:var(--surface-1);color:var(--text-primary)}',
     '#cbox{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:flex-start;justify-content:center;z-index:50;padding-top:8vh}.cb{background:var(--surface-1);border:1px solid var(--grid);border-radius:12px;padding:14px 18px;max-width:560px;width:92%;max-height:80vh;overflow:auto;box-shadow:0 10px 30px rgba(0,0,0,.35)}',
     '.cb h3{margin:0 0 8px}.cb pre{font-size:11px;white-space:pre-wrap}.cbb{display:flex;gap:8px;justify-content:flex-end;margin-top:8px}.go{background:var(--accent)!important;color:#fff!important}.bad{color:#d9534f}',
     '.sendsw{cursor:pointer;margin-left:6px}.sendsw.on{background:#2e9e5b;color:#fff}',
     '.warns{margin:6px 0}.warns p{margin:4px 0;padding:5px 8px;border-radius:6px}.wn{background:rgba(214,51,108,.14);border-left:3px solid #d6336c}.wi{background:rgba(57,135,229,.12);border-left:3px solid #3987e5}',
     '.why{color:var(--text-secondary)}.help{color:var(--text-secondary);font-size:12.5px;margin:0 0 5px}.ack{display:block;margin:6px 0}',
     '.pick svg{width:100%;height:auto}.hx{fill:rgba(57,135,229,.18);stroke:#3987e5;stroke-width:2.2;cursor:pointer}.hx:hover{fill:rgba(57,135,229,.38)}.hx.sel{fill:rgba(46,158,91,.4);stroke:#2e9e5b;stroke-width:3}',
+    '.pill.jmv{background:var(--surface-0);border:1px solid var(--grid);color:var(--text-primary);padding:4px 10px;font-size:12px;cursor:pointer}.pill.jmv:hover{border-color:var(--accent);color:var(--accent)}.pill.jmv.unsure{border-style:dashed}',
     '.tiles{display:flex;flex-wrap:wrap;gap:6px}.tilebtn{background:var(--surface-0);border:1px solid var(--grid);border-radius:8px;padding:2px;cursor:pointer}.tilebtn:hover{border-color:var(--accent)}'
   ].join('\n');
   var ACT = { pass: 'Pass', bid: 'Bid', par: 'Start a company', buy_shares: 'Buy shares', sell_shares: 'Sell shares', lay_tile: 'Lay a tile', place_token: 'Place a station',
@@ -825,7 +829,7 @@
       '<span class="kv">Round <b>' + esc(d.roundLabel) + '</b></span><span class="kv">Phase <b>' + esc(d.phase) + '</b></span><span class="kv">Bank <b>' + esc(d.primer && d.primer.bankUnlimited ? 'unlimited' : m(d.bank)) + '</b></span>' +
       (d.nextTrain ? '<span class="kv">Next train <b>' + esc(d.nextTrain.name) + ' ' + esc(m(d.nextTrain.price)) + '</b></span>' : '') +
       (d.finished ? '<span class="kv"><b>Game over</b></span>' : acting ? '<span class="kv">To act: ' + (pc[acting] ? sw(pc[acting]) : '') + '<b>' + esc(acting) + '</b>' + (t.entType !== 'player' ? ' for ' + esc(t.entity) : '') + (myTurn ? ' · <b style="color:var(--accent)">your turn</b>' : '') + '</span>' : '') + '</header>');
-    if (J.learnLevel()) h.push(J.roundBanner(d, me));
+    if (J.learnLevel()) h.push(String(J.roundBanner(d, me)).replace(/\s*Press ⓘ[\s\S]*?⋯ menu\./, ''));
     h.push('<div class="jw"><div class="jcol">');
     // the board
     h.push('<section class="card wide jb"><h2>Board</h2>' + J.boardSvg(d, null, [], 1400) + '</section>');
@@ -834,7 +838,6 @@
     // moves now
     if (!d.finished && t) {
       h.push('<section class="card' + (myTurn ? ' yt' : '') + '"><h2>' + (myTurn ? 'Your turn' : 'Now') + '</h2><p class="sub">' + esc(t.entity) + (t.desc ? ': ' + esc(t.desc) : '') + '</p>' + movesHtml(d, t, me, myTurn, sup) + '</section>');
-      if (J.learnLevel()) h.push('<section class="card">' + J.yourTurnHtml(d, me, m) + '</section>');
     }
     // you
     var P = d.players.slice().sort(function (a, b) { return b.value - a.value; });
@@ -845,6 +848,8 @@
         (row ? '<div class="tw"><table class="tight"><thead><tr><th style="text-align:left">Company</th><th>Share</th><th>Value</th></tr></thead><tbody>' + Object.keys(row.cells).map(function (cn) { var c = row.cells[cn]; return '<tr><td style="text-align:left">' + esc(cn) + (c.pres ? ' ★' : '') + '</td><td>' + c.pct + '%</td><td>' + esc(m(c.val)) + '</td></tr>'; }).join('') + '</tbody></table></div>' : '') +
         (mine.length ? '<h3 class="rh">Companies you run</h3><div class="tw"><table class="tight"><thead><tr><th style="text-align:left">Company</th><th>Price</th><th>Cash</th><th>Trains</th></tr></thead><tbody>' + mine.map(function (c) { return '<tr><td style="text-align:left">' + sw(c.color) + esc(c.name) + '</td><td>' + esc(c.price != null ? m(c.price) : '–') + '</td><td>' + esc(m(c.cash)) + '</td><td>' + esc(c.trains.map(function (x) { return x.name; }).join(', ') || 'none') + '</td></tr>'; }).join('') + '</tbody></table></div>' : '') + '</section>');
     } else h.push('<section class="card"><h2>You</h2><p class="sub">Pick your name under <b>I am</b> in the JNN-stats ⋯ menu; JNN-Engine uses the same setting.</p></section>');
+    // the turn explained (Learning mode), after the short cards so the moves stay near the top
+    if (!d.finished && t && J.learnLevel()) E.turnCard = String(J.yourTurnHtml(d, me, m)).replace(/<p[^>]*>Make the move on the 18xx\.games page; this window only explains\.<\/p>/, ''); else E.turnCard = '';
     // players
     h.push('<section class="card"><h2>Players</h2><div class="tw"><table class="tight"><thead><tr><th style="text-align:left">Player</th><th>Value</th><th>Cash</th><th>Certs</th></tr></thead><tbody>' +
       P.map(function (p) { return '<tr' + (p.name === me ? ' class="mine"' : '') + '><td style="text-align:left">' + sw(pc[p.name]) + esc(p.name) + (p.name === acting ? ' ▶' : '') + '</td><td>' + esc(m(p.value)) + '</td><td>' + esc(m(p.cash)) + '</td><td>' + p.certs + '</td></tr>'; }).join('') + '</tbody></table></div></section>');
@@ -852,6 +857,7 @@
     var open = d.corps.filter(function (c) { return !c.closed && c.floated !== false; });
     if (open.length) h.push('<section class="card"><h2>Companies</h2><div class="tw"><table class="tight"><thead><tr><th style="text-align:left">Company</th><th>President</th><th>Price</th><th>Cash</th><th>Trains</th></tr></thead><tbody>' +
       open.map(function (c) { return '<tr><td style="text-align:left">' + sw(c.color) + esc(c.name) + '</td><td>' + esc(c.president || '–') + '</td><td>' + esc(c.price != null ? m(c.price) : '–') + '</td><td>' + esc(m(c.cash)) + '</td><td>' + esc(c.trains.map(function (x) { return x.name; }).join(', ') || 'none') + '</td></tr>'; }).join('') + '</tbody></table></div></section>');
+    if (E.turnCard) h.push(E.turnCard);
     h.push('</div></div>');
     h.push('<div class="ft">JNN-Engine ' + VERSION + ' · built on 18xx-JNNstats ' + esc(J.version) + ' (JNN-API ' + esc(J.apiVersion) + ')' + (E.pinned ? ' · using the newest JNN-stats release known to fit this JNN-Engine' : '') +
       ' · ' + (sup ? 'tested title' : 'title not tested with JNN-Engine yet: moves are never sent') + ' · updated ' + new Date().toLocaleTimeString() + ' · the 18xx.games page is always the place to play if anything here looks wrong. <button class="lnk" id="jrep">Copy a problem report</button></div>');
