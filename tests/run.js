@@ -33,7 +33,7 @@
         row.moves = x.self.found + '/' + x.self.moves;
         row.missing = Object.keys(x.self.missingByType).map(function (k) { return k + ' ' + x.self.missingByType[k]; }).join(', ') || '-';
         row.replay = x.self.replayed;
-        row.choices = x.options.ok + '/' + (x.options.tried - (x.options.late || 0)) + ' at ' + x.options.positions + ' positions' + (x.options.late ? ' (+' + x.options.late + ' tiles refused on laying, as on the site)' : '');
+        row.choices = x.options.ok + '/' + (x.options.tried - (x.options.late || 0)) + ' at ' + x.options.positions + ' positions' + (x.options.late ? ' (+' + x.options.late + ' refused only at the final check, as on the site: tiles without new track, stations without a connection)' : '');
         row.refused = Object.keys(x.options.byType).map(function (k) { return k + ' ' + x.options.byType[k]; }).join(', ') || '-';
         row.ok = x.self.found === x.self.moves && x.options.ok === x.options.tried - (x.options.late || 0) && !x.self.replayDiffs.length;
         row._detail = { missing: x.self.missing, replayDiffs: x.self.replayDiffs, refused: x.options.bad };

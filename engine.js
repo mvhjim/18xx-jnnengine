@@ -201,10 +201,12 @@
     if (can('dividend')) {
       var opts = null; try { opts = step.$dividend_options(entity); } catch (e) {}
       var types = []; try { types = arr(step.$dividend_types()).map(os); } catch (e) {}
+      if (opts && has(opts, 'keys')) { var ok = arr(opts.$keys()).map(os); if (ok.length) types = types.filter(function (t) { return ok.indexOf(t) >= 0; }); }
       types.filter(function (t) { return t !== 'variable'; }).forEach(function (t) {
         var o = opts ? hget(opts, t) || hget(opts, Opal.Symbol ? t : t) : null, per = o ? num(hget(o, 'per_share')) : null;
         var h = base('dividend'); h.kind = t;
-        add('Pay out or withhold', ({ payout: 'Pay out', withhold: 'Withhold', half: 'Pay half' }[t] || t) + (per != null && t !== 'withhold' ? ' (' + money(per) + ' per share)' : ''), h);
+        var dn = ''; try { if (has(step, 'dividend_name')) dn = os(step.$dividend_name(t)); } catch (e) {}
+        add('Pay out or withhold', ({ payout: 'Pay out', withhold: 'Withhold', half: 'Pay half' }[t] || dn || t) + (per != null && t !== 'withhold' ? ' (' + money(per) + ' per share)' : ''), h);
       });
     }
     if (can('buy_train')) {
@@ -518,6 +520,7 @@
           catch (e) {
             var em = e.message || String(e);
             if (h.type === 'lay_tile' && /must use new track|new track must|must be city tile or use new track/i.test(em)) { res.late = (res.late || 0) + 1; continue; }
+            if (jb.o.unsure) { res.late = (res.late || 0) + 1; continue; }
             res.byType[h.type] = (res.byType[h.type] || 0) + 1; if (res.bad.length < 25) res.bad.push({ k: jb.k, label: jb.o.label, err: (e.message || String(e)).slice(0, 160), h: JSON.stringify(h).slice(0, 200) }); }
         }
         if (i >= jobs.length) { res.ms = Date.now() - t0; resolve(res); return; }
@@ -579,7 +582,7 @@
       var id = os(hex.$id()), k = '';
       var mine = false; try { mine = truthy(hex['$assigned?']('mine')); } catch (e) {}
       if (ts && !mine) { try { if (truthy(ts.$available_hex(ent, hex)) && arr(ts.$upgradeable_tiles(ent, hex)).length) k += 't'; } catch (e) {} }
-      if (tk) { try { if (truthy(tk.$available_hex(ent, hex)) && tileCities(hex).some(function (c) { try { return (truthy(c['$tokenable?'](tokOwner(g, ent))) && tokConnected(g, ent, c)); } catch (e2) { return false; } })) k += 's'; } catch (e) {} }
+      if (tk) { try { if (truthy(tk.$available_hex(ent, hex)) && tileCities(hex).some(function (c) { try { return truthy(c['$tokenable?'](tokOwner(g, ent))); } catch (e2) { return false; } })) k += 's'; } catch (e) {} }
       if (k) out[id] = k;
     });
     return out;
@@ -603,14 +606,15 @@
       var tk = stepFor(g, ent, 'place_token'), toks = []; try { toks = arr(tk.$available_tokens(ent)); } catch (e) {}
       var owner = null; try { owner = g.$token_owner(ent); } catch (e) {}
       tileCities(hex).forEach(function (c, ci) {
-        try { if (!(truthy(c['$tokenable?'](tokOwner(g, ent))) && tokConnected(g, ent, c))) return; } catch (e) { return; }
+        try { if (!truthy(c['$tokenable?'](tokOwner(g, ent)))) return; } catch (e) { return; }
         var slot = null; try { slot = c.$get_slot(owner || ent); slot = nil(slot) ? null : num(slot); } catch (e) {}
         if (slot == null) { try { slot = arr(c.$tokens()).findIndex(function (x) { return nil(x); }); } catch (e) {} if (slot < 0) slot = 0; }
         var h = { type: 'place_token', entity: ej.entity, entity_type: ej.entity_type, city: os(c.$id()), slot: slot };
         if (owner) h.tokener = os(owner.$id());
         var tt = toks[0] ? os(call(toks[0], 'type')) : ''; if (tt && tt !== 'normal') h.token_type = tt;
         var name = os(call(hex, 'location_name')) || hexId;
-        out.push({ group: 'Station on ' + hexId, label: 'Place a station in ' + name + (tileCities(hex).length > 1 ? ' (city ' + (ci + 1) + ')' : ''), h: h });
+        var conn = tokConnected(g, ent, c);
+        out.push({ group: 'Station on ' + hexId, label: 'Place a station in ' + name + (tileCities(hex).length > 1 ? ' (city ' + (ci + 1) + ')' : '') + (conn ? '' : ' (not connected by track: the rules may refuse it)'), h: h, unsure: !conn });
       });
     }
     return out;
