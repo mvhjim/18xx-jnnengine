@@ -698,7 +698,9 @@
       var n = Object.keys(targets).length;
       var ttl = (ma.indexOf('lay_tile') >= 0 ? 'lay a tile' : '') + (ma.indexOf('lay_tile') >= 0 && ma.indexOf('place_token') >= 0 ? ' or ' : '') + (ma.indexOf('place_token') >= 0 ? 'place a station' : '');
       if (ent !== curEntity(g)) ttl = os(call(ent, 'name')) + ': ' + ttl; else ttl = ttl.charAt(0).toUpperCase() + ttl.slice(1);
-      h += '<div class="mg"><div class="mgh">' + esc(ttl) + ': ' + (n ? 'pick one of the ' + n + ' outlined hexes on the board' : 'no hex is available') + '</div><div class="pick">' + mapPicker(J, d, targets) + '</div><div id="hexopts"></div></div>';
+      h += '<div class="mg"><div class="mgh">' + esc(ttl) + ': ' + (n === 1 ? 'one hex is possible' : n ? 'pick one of the ' + n + ' outlined hexes, on the board or here' : 'no hex is available') + '</div>' +
+        (n > 1 ? '<div class="hxchips">' + Object.keys(targets).sort().map(function (id) { var ln = ''; try { ln = os(call(g.$hex_by_id(id), 'location_name')); } catch (e) {} return '<button class="hxchip" data-hex="' + esc(id) + '">' + esc(id) + (ln ? ' ' + esc(ln) : '') + '</button>'; }).join('') + '</div>' : '') +
+        '<div class="pick">' + mapPicker(J, d, targets) + '</div><div id="hexopts"></div></div>';
       E.targets = targets;
     }
     if (ma.indexOf('run_routes') >= 0) h += '<div class="mg"><div class="mgh">Run trains</div><button class="pill" id="rr-find">Find the best routes</button> <span class="note">uses the site\'s own auto-router; to draw routes by hand, use the 18xx.games page</span><div id="rr-out"></div></div>';
@@ -706,7 +708,7 @@
   }
   function showHexOptions(J, hexId) {
     var doc = w.document, box = doc.getElementById('hexopts'); if (!box) return;
-    E.selHex = hexId; Array.prototype.forEach.call(doc.querySelectorAll('.hx'), function (p) { p.classList.toggle('sel', p.getAttribute('data-hex') === hexId); });
+    E.selHex = hexId; Array.prototype.forEach.call(doc.querySelectorAll('.hx, .hxchip'), function (p) { p.classList.toggle('sel', p.getAttribute('data-hex') === hexId); });
     var g = qgame(J), ent = mapEntity(g), opts = [];
     try { opts = hexOptions(g, ent, hexId, E.targets[hexId] || ''); } catch (e) { box.innerHTML = '<p class="note">Could not read the choices: ' + esc(e.message) + '</p>'; return; }
     if (!opts.length) { box.innerHTML = '<p class="note">Nothing can be placed on ' + esc(hexId) + ' now.</p>'; return; }
@@ -815,7 +817,8 @@
     '.sendsw{cursor:pointer;margin-left:6px}.sendsw.on{background:#2e9e5b;color:#fff}',
     '.warns{margin:6px 0}.warns p{margin:4px 0;padding:5px 8px;border-radius:6px}.wn{background:rgba(214,51,108,.14);border-left:3px solid #d6336c}.wi{background:rgba(57,135,229,.12);border-left:3px solid #3987e5}',
     '.why{color:var(--text-secondary)}.help{color:var(--text-secondary);font-size:12.5px;margin:0 0 5px}.ack{display:block;margin:6px 0}',
-    '.pick svg{width:100%;height:auto}.hx{fill:rgba(57,135,229,.18);stroke:#3987e5;stroke-width:2.2;cursor:pointer}.hx:hover{fill:rgba(57,135,229,.38)}.hx.sel{fill:rgba(46,158,91,.4);stroke:#2e9e5b;stroke-width:3}',
+    '.pick svg{width:100%;height:auto}.hx{fill:rgba(57,135,229,.28);stroke:#3987e5;stroke-width:3.5;cursor:pointer}.hx:hover{fill:rgba(57,135,229,.38)}.hx.sel{fill:rgba(46,158,91,.4);stroke:#2e9e5b;stroke-width:3}',
+    '.hxchips{display:flex;flex-wrap:wrap;gap:4px;margin:0 0 6px}.hxchip{background:transparent;border:1px solid var(--grid);color:var(--text-secondary);border-radius:999px;padding:2px 8px;font-size:11px;cursor:pointer}.hxchip:hover,.hxchip.sel{border-color:#3987e5;color:var(--text-primary)}',
     '.pill.jmv{background:var(--surface-0);border:1px solid var(--grid);color:var(--text-primary);padding:4px 10px;font-size:12px;cursor:pointer}.pill.jmv:hover{border-color:var(--accent);color:var(--accent)}.pill.jmv.unsure{border-style:dashed}',
     '.tiles{display:flex;flex-wrap:wrap;gap:6px}.tilebtn{background:var(--surface-0);border:1px solid var(--grid);border-radius:8px;padding:2px;cursor:pointer}.tilebtn:hover{border-color:var(--accent)}'
   ].join('\n');
@@ -874,9 +877,12 @@
     doc.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
     doc.body.innerHTML = h.join('');
     w.scrollTo(0, y);
+    // a single place to build: open it right away; otherwise reopen the hex that was open before the redraw
+    var tks = Object.keys(E.targets || {}); var auto = tks.length === 1 ? tks[0] : (E.selHex && E.targets && E.targets[E.selHex] ? E.selHex : null);
+    if (auto && doc.getElementById('hexopts')) { try { showHexOptions(J, auto); } catch (e) {} }
     doc.body.onclick = function (ev) {
       var b = ev.target.closest && ev.target.closest('button.jmv'); if (b) { confirmBox(J, +b.getAttribute('data-i')); return; }
-      var hx = ev.target.closest && ev.target.closest('.hx'); if (hx) { showHexOptions(J, hx.getAttribute('data-hex')); return; }
+      var hx = ev.target.closest && ev.target.closest('.hx, .hxchip'); if (hx) { showHexOptions(J, hx.getAttribute('data-hex')); return; }
       if (ev.target.id === 'rr-find') { runRoutesUi(J); return; }
       if (ev.target.id === 'jrep') { reportBox(); return; }
       if (ev.target.id === 'sendsw') {
