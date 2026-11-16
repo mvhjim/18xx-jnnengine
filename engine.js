@@ -73,6 +73,16 @@
   }
   // 3. Load and replay the game, then keep it up to date
   function load(J) {
+    if (E.fixed) { // test preview of an earlier position: fetched once, never sends
+      if (E.game && E.game.fixed === E.fixed) return Promise.resolve();
+      var fx = E.fixed;
+      return J.fetchGameText(fx.id).then(function (text) {
+        var raw = JSON.parse(text); return J.ensureTitle(raw.title).then(function () {
+          raw.actions = raw.actions.slice(0, fx.n); raw.status = 'active'; delete raw.result; var t2 = JSON.stringify(raw);
+          E.game = { g: J.loadGame(t2), raw: raw, fixed: fx };
+        });
+      });
+    }
     return J.fetchGameText(gid).then(function (text) {
       var raw = JSON.parse(text); if (!raw.actions) throw new Error('game ' + gid + ' not found');
       return J.ensureTitle(raw.title).then(function () {
@@ -261,6 +271,8 @@
     return { title: raw.title, moves: n, found: ok, missingByType: byType, missing: miss, replayed: same2 + '/' + checks.length, replayDiffs: diff };
   }
   E._moveOptions = moveOptions;
+  // for testing: show game id at its first n moves (sending is always off), or null to go back
+  E.preview = function (id, n) { E.fixed = id ? { id: id, n: n } : null; E.game = null; E.q = null; return cycle(true); };
   E.selfTest = function (id) { return pickStats().then(loadStats).then(function (J) { return J.fetchGameText(id || gid).then(function (t) { var raw = JSON.parse(t); return J.ensureTitle(raw.title).then(function () { return selfTest(J, t); }); }); }); };
 
   // ---------- Map moves (J4): tiles, stations, routes ------------------------------------------
@@ -431,8 +443,8 @@
     setTimeout(function () {
       var r = null, err = null; try { r = dryRun(J, JSON.stringify(E.game.raw), h); } catch (e) { err = e.message || String(e); }
       var u = pageUser(), sup = SUPPORTED.indexOf(E.game.raw.title) >= 0, pinned = !!(E.game.raw.settings && E.game.raw.settings.pin);
-      var mine = r && u && r.actors.indexOf(u.id) >= 0, canSend = !err && sendOn() && sup && !pinned && mine && E.game.raw.status !== 'finished';
-      var why = err ? '' : !sup ? 'not a tested title' : pinned ? 'pinned games are not supported' : !sendOn() ? 'test mode is on' : !u ? 'you are not logged in on this page' : !mine ? 'it is not your move (only the player whose turn it is may make it)' : '';
+      var mine = r && u && r.actors.indexOf(u.id) >= 0, canSend = !err && !E.fixed && sendOn() && sup && !pinned && mine && E.game.raw.status !== 'finished';
+      var why = err ? '' : E.fixed ? 'this is a test preview of an earlier position' : !sup ? 'not a tested title' : pinned ? 'pinned games are not supported' : !sendOn() ? 'test mode is on' : !u ? 'you are not logged in on this page' : !mine ? 'it is not your move (only the player whose turn it is may make it)' : '';
       box.innerHTML = '<div class="cb"><h3>' + esc(o.label) + '</h3>' + (err ? '<p class="bad">The rules engine does not allow this move: ' + esc(err) + '</p>' :
         '<p>This is what will happen:</p><ul>' + r.log.map(function (l) { return '<li>' + esc(l) + '</li>'; }).join('') + '</ul><details><summary>What would be sent</summary><pre>' + esc(JSON.stringify(r.json, null, 1)) + '</pre></details>') +
         '<p class="note">' + (canSend ? 'Press Send to make this move on 18xx.games. It is checked again against the latest game first.' : err ? '' : 'Not sent: ' + esc(why) + '.') + '</p>' +
@@ -554,6 +566,7 @@
   // requests are needed; a full fetch happens only when something does not line up, plus a slow backup check.
   function onBus(msg) {
     try {
+      if (E.fixed) return;
       var a = msg && (msg.type ? msg : null); if (!a || !E.game || !E.J) { later(); return; }
       var last = E.game.raw.actions.length ? E.game.raw.actions[E.game.raw.actions.length - 1].id : 0;
       if (a.id === last + 1 && a.type !== 'undo' && a.type !== 'redo' && E.J.applyActions(E.game.g, [a])) { E.game.raw.actions.push(a); E.q = null; draw(E.J); }
