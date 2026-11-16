@@ -209,14 +209,19 @@
     }
     if (can('buy_train')) {
       var trains = []; try { trains = arr(step.$buyable_trains(entity)); } catch (e) {}
-      var depot = g.$depot(), seenT = {};
+      var depot = g.$depot(), seenT = {}, cheapest = Infinity;
+      trains.forEach(function (t) { var o0 = call(t, 'owner'); if (o0 === depot || (o0 && os(call(o0, 'name')) === 'The Depot')) { var vs0 = call(t, 'variants'); (vs0 ? vs0.$keys() : []).forEach(function (vn) { var p0 = num(hget(vs0['$[]'](vn), 'price')); if (p0 != null && p0 < cheapest) cheapest = p0; }); } });
       trains.forEach(function (t) {
         var owner = call(t, 'owner'), fromDepot = owner === depot || (owner && os(call(owner, 'name')) === 'The Depot');
         if (fromDepot) {
           var allowed = []; try { allowed = arr(step.$buyable_train_variants(t, entity)); } catch (e) {}
           var vs = call(t, 'variants'); (vs ? vs.$keys() : []).forEach(function (vn) {
             var v = vs['$[]'](vn); if (allowed.length && allowed.indexOf(v) < 0) return;
-            var price = num(hget(v, 'price')), key = 'd' + os(vn) + price; if (seenT[key]) return; seenT[key] = 1;
+            var price = num(hget(v, 'price')), key = 'd' + os(vn) + price; if (seenT[key]) return;
+            // like the site: a train the company cannot pay for is only offered when it must buy one (the president then helps, for the cheapest)
+            var bp = null; try { bp = num(g.$buying_power(entity)); } catch (e) {} 
+            if (bp != null && price > bp) { var must = false; try { must = truthy(step['$must_buy_train?'](entity)); } catch (e) {} if (!must || price > cheapest) return; }
+            seenT[key] = 1;
             var h = base('buy_train'); h.train = os(t.$id()); h.price = price; h.variant = os(vn);
             var wmax = 0; try { if (has(step, 'warranty_max')) wmax = num(step.$warranty_max()) || 0; } catch (e) {}
             if (wmax > 0) { var wc = 0; try { wc = num(step.$warranty_cost()); } catch (e) {} h.warranties = 0;
@@ -509,6 +514,10 @@
   function curEntity(g) { try { return g.$round().$active_step().$current_entity(); } catch (e) { return null; } }
   function stepFor(g, ent, act) { try { var st = g.$round().$step_for(ent, act); return nil(st) ? null : st; } catch (e) { return null; } }
   function entJson(ent) { var id = os(call(ent, 'id')); return { entity: isNaN(+id) ? id : +id, entity_type: truthy(call(ent, 'player?')) ? 'player' : truthy(call(ent, 'corporation?')) ? 'corporation' : truthy(call(ent, 'minor?')) ? 'minor' : 'company' }; }
+  function tokConnected(g, ent, c) {
+    if (truthy(call(ent, 'company?'))) return true; // special powers can place without a connection; the dry run checks
+    try { var nodes = g.$token_graph_for_entity(ent).$connected_nodes(ent); return truthy(nodes['$[]'](c)); } catch (e) { return true; }
+  }
   function tokOwner(g, ent) { try { var o = g.$token_owner(ent); return nil(o) ? ent : o; } catch (e) { return ent; } }
   function tileCities(hex) { var t = call(hex, 'tile'); return t ? arr(call(t, 'cities')) : []; }
   // which hexes take a tile or a station now
@@ -517,7 +526,7 @@
     arr(g.$hexes()).forEach(function (hex) {
       var id = os(hex.$id()), k = '';
       if (ts) { try { if (truthy(ts.$available_hex(ent, hex)) && arr(ts.$upgradeable_tiles(ent, hex)).length) k += 't'; } catch (e) {} }
-      if (tk) { try { if (truthy(tk.$available_hex(ent, hex)) && tileCities(hex).some(function (c) { try { return truthy(c['$tokenable?'](tokOwner(g, ent))); } catch (e2) { return false; } })) k += 's'; } catch (e) {} }
+      if (tk) { try { if (truthy(tk.$available_hex(ent, hex)) && tileCities(hex).some(function (c) { try { return (truthy(c['$tokenable?'](tokOwner(g, ent))) && tokConnected(g, ent, c)); } catch (e2) { return false; } })) k += 's'; } catch (e) {} }
       if (k) out[id] = k;
     });
     return out;
@@ -529,7 +538,9 @@
       var ts = stepFor(g, ent, 'lay_tile'), tiles = [];
       try { tiles = arr(ts.$upgradeable_tiles(ent, hex)); } catch (e) {}
       tiles.forEach(function (tile) {
-        var rots = arr(call(tile, 'legal_rotations')).map(num);
+        var rots = arr(call(tile, 'legal_rotations')).map(num).filter(function (r) {
+          try { tile['$rotate!'](r); if (has(ts, 'check_track_restrictions!')) ts['$check_track_restrictions!'](ent, hex.$tile(), tile); return true; } catch (e) { return false; }
+        });
         rots.forEach(function (r) {
           var h = { type: 'lay_tile', entity: ej.entity, entity_type: ej.entity_type, hex: hexId, tile: os(tile.$id()), rotation: r };
           out.push({ group: 'Tile on ' + hexId, label: 'Tile ' + os(tile.$name()) + ', rotation ' + (rots.indexOf(r) + 1) + ' of ' + rots.length, h: h, svg: tileSvg(tile, r, os(call(hex, 'layout')) || 'flat') });
@@ -540,7 +551,7 @@
       var tk = stepFor(g, ent, 'place_token'), toks = []; try { toks = arr(tk.$available_tokens(ent)); } catch (e) {}
       var owner = null; try { owner = g.$token_owner(ent); } catch (e) {}
       tileCities(hex).forEach(function (c, ci) {
-        try { if (!truthy(c['$tokenable?'](tokOwner(g, ent)))) return; } catch (e) { return; }
+        try { if (!(truthy(c['$tokenable?'](tokOwner(g, ent))) && tokConnected(g, ent, c))) return; } catch (e) { return; }
         var slot = null; try { slot = c.$get_slot(owner || ent); slot = nil(slot) ? null : num(slot); } catch (e) {}
         if (slot == null) { try { slot = arr(c.$tokens()).findIndex(function (x) { return nil(x); }); } catch (e) {} if (slot < 0) slot = 0; }
         var h = { type: 'place_token', entity: ej.entity, entity_type: ej.entity_type, city: os(c.$id()), slot: slot };
