@@ -25,7 +25,7 @@
   var STATS_CDN = 'https://cdn.jsdelivr.net/gh/mvhjim/18xx-jnnstats@';
   var REFRESH_MS = 60000;              // backup check only; new moves arrive through the site's own push channel
   // Titles tested with JNN-Engine. Others are shown, but sending moves (in later versions) stays off.
-  var SUPPORTED = ['1846', '1862', 'The Old Prince 1871', '1849: Kingdom of the Two Sicilies'];
+  var SUPPORTED = ['1817', '1846', '1862', 'The Old Prince 1871', '1849: Kingdom of the Two Sicilies'];
 
   var E = window.__jnnEngine = window.__jnnEngine || {};
   if (E.timer) clearInterval(E.timer);
@@ -262,7 +262,7 @@
       var subj = has(step, 'auctioning_corporation') ? step.$auctioning_corporation() : entity, targets = [];
       try { targets = arr(has(step, 'mergeable') ? step.$mergeable(nil(subj) ? entity : subj) : []); } catch (e) {}
       var mname = 'Merge'; try { if (has(step, 'merge_name')) mname = os(step.$merge_name(entity)) || mname; } catch (e) {}
-      targets.forEach(function (t) { try { var key = truthy(call(t, 'minor?')) ? 'minor' : 'corporation', o = {}; o[key] = t; add(mname, mname + ' with ' + nm(t), mk('Merge', o)); } catch (e) {} });
+      targets.forEach(function (t) { try { var key = truthy(call(t, 'minor?')) ? 'minor' : 'corporation', o = {}; o[key] = t; add(mname, (/^acquire$/i.test(mname) && !nil(subj) && subj !== entity ? nm(t) + ' acquires ' + nm(subj) : mname + ' with ' + nm(t)), mk('Merge', o)); } catch (e) {} });
     }
     if (can('choose')) {
       try {
@@ -278,7 +278,7 @@
       try { if (has(step, 'assignable_corporations')) arr(step.$assignable_corporations(entity)).forEach(function (c) { add('Use ' + nm(entity), 'Assign ' + nm(entity) + ' to ' + nm(c), mk('Assign', { target: c })); }); } catch (e) {}
     } else if (can('assign')) {
       var tg = []; try { tg = has(step, 'available_subsidiaries') ? arr(step.$available_subsidiaries(entity)) : has(step, 'auctioning_corporation') && !nil(step.$auctioning_corporation()) ? [step.$auctioning_corporation()] : []; } catch (e) {}
-      tg.forEach(function (t) { try { var v = num(call(t, 'value')); add('Assign', (truthy(call(t, 'company?')) ? 'Use ' + nm(t) + ' (' + money(v) + ')' : 'Offer ' + nm(t) + ' for sale'), mk('Assign', { target: t })); } catch (e) {} });
+      tg.forEach(function (t) { try { var v = num(call(t, 'value')); add('Assign', (truthy(call(t, 'company?')) ? 'Put ' + nm(t) + ' into the new company (' + money(v) + ')' : 'Offer ' + nm(t) + ' for sale'), mk('Assign', { target: t })); } catch (e) {} });
     }
     if (can('remove_token')) {
       // after a merger the surviving company may remove its own stations or those of the companies it took over
@@ -288,7 +288,7 @@
         var tc = call(t, 'corporation'); hx += tc && tc !== entity ? ' (' + nm(tc) + '\'s)' : ''; add('Remove a station', 'Remove the station in ' + hx, mk('RemoveToken', { city: c, slot: arr(c.$tokens()).indexOf(t) })); } catch (e) {} });
     }
     if (can('discard_train')) {
-      arr(call(entity, 'trains')).forEach(function (t) { try { add('Discard a train', 'Discard the ' + nm(t), mk('DiscardTrain', { train: t })); } catch (e) {} });
+      arr(call(entity, 'trains')).forEach(function (t) { try { add('Discard a train', 'Discard the ' + nm(t) + ' train', mk('DiscardTrain', { train: t })); } catch (e) {} });
     }
     out.forEach(function (o) { Object.keys(o.h).forEach(function (k) { if (o.h[k] === undefined) delete o.h[k]; }); });
     return out;
