@@ -1,6 +1,28 @@
 # Changelog
 All notable changes to this project are listed here. The format follows [Keep a Changelog](https://keepachangelog.com), and versions follow [Semantic Versioning](https://semver.org).
 
+## [0.6.1] - 2026-11-16 (beta)
+
+From a UX and completeness review before learning The Old Prince 1871.
+
+### Added
+- **Every legal move is offered, also those that are rarely wise.** Learning mode only adds explanations; it never hides a move. New:
+  - The Old Prince 1871: offering a private company for auction, splitting a company (and the choices that follow), and the Hunslet's train purchase.
+  - **Buying a private company** for a company (all titles), with the price between the rules' limits.
+  - **Bankruptcy**, at the end of the list under *Last resort*, only when the rules would accept it, and with a ⚠ warning that needs the tick before it can be sent.
+- The self-test now also lists move types JNN-Engine does not make (none left in the tested games).
+- Map moves: the possible hexes are also listed as buttons, and when only one hex is possible its tiles open right away.
+
+### Changed
+- **On a narrow window (side by side with JNN-stats) the moves come first**, above the board; the long *Your turn, explained* card moved to the end.
+- **Looks like JNN-stats:** the same buttons, chips and table text size (tables were larger before), so the two windows read as one.
+- Explanations in Learning mode are shown once per kind of move, and *Pass* is explained for the round you are in (auction, stock or operating round).
+- A private company exchanged for a share is labelled as an exchange; private company stations follow the power's own rules (for example a second station in Chicago with the C&WI).
+- Texts that only make sense in JNN-stats (the ⋯ menu, "make the move on the 18xx.games page") are left out in JNN-Engine.
+
+### Test results
+Every real move found in 1846 (388), The Old Prince 1871 (564 and 633) and 1849: Kingdom of the Two Sicilies (614, including a bankruptcy); sample replays 10 of 10.
+
 ## [0.6.0] - 2026-11-16 (beta)
 
 ### Added

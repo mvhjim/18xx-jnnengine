@@ -38,5 +38,5 @@ A screenshot helps too. If you take one, switch on privacy mode in the JNN-stats
 
 - **It is light on the server.** New moves arrive through the site's own live channel, which the page already keeps open, so JNN-Engine adds no requests while you watch.
 - **Nothing is stored on a server.** Settings (sending on or off, Learning mode, I am) are kept in your own browser.
-- **Going bankrupt** is left to the 18xx.games page on purpose.
+- **Going bankrupt** is offered only when the rules allow it, last in the list under *Last resort*, and needs an extra tick before it can be sent.
 - If a new version has just been released, the bookmark may load the previous one for a few hours (the code is delivered through the jsDelivr CDN). The version is shown at the bottom of the window.

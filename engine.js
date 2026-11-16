@@ -18,7 +18,7 @@
  */
 (function () {
   'use strict';
-  var VERSION = '0.6.0';
+  var VERSION = '0.6.1';
   var API_MAJOR = '1';                 // the JNN-API major version this code is written for
   var API_MIN = '1.1';                 // the oldest minor version it can use
   var FALLBACK_SHA = 'bfabede';        // a JNN-stats release known to work, used if the latest is incompatible
@@ -335,7 +335,7 @@
     if (can('bankrupt')) {
       // only when the rules would accept it (the site lists it in many steps but refuses it unless there is no way to pay)
       try {
-        var sb = g.$round().$step_for(entity, 'bankrupt'), okB = !nil(sb) && has(sb, 'process_bankrupt');
+        var sb = g.$round().$step_for(entity, 'bankrupt'), okB = !nil(sb) && has(sb, 'process_bankrupt') && /Train|Bankrupt|Cash|Emergency|Crisis|Liquidat/i.test(os(sb.$class().$name()));
         if (okB && has(g, 'can_go_bankrupt?')) { var pl = truthy(call(entity, 'player?')) ? entity : call(entity, 'owner'); okB = truthy(g['$can_go_bankrupt?'](pl, truthy(call(entity, 'corporation?')) ? entity : Opal.nil)); }
         if (okB) add('Last resort', 'Declare bankruptcy', mk('Bankrupt', {}));
       } catch (e) {}

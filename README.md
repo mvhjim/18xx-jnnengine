@@ -2,7 +2,7 @@
 
 A JNN game window for [18xx.games](https://18xx.games): the game drawn the JNN way, in its own window beside the site and beside [18xx-JNNstats](https://github.com/mvhjim/18xx-jnnstats).
 
-**Status: 0.6.0 (beta).** Shows the game and can make every move found in the tested titles' finished games: shares, starting companies, bids and auctions, dividends, trains, tiles, stations and routes, private company powers, and title-specific steps (1817 loans, shorts, conversions, mergers and acquisitions; The Old Prince 1871 Union Bank purchases and exchanges). **Sending is off by default:** in test mode every move is checked on a copy of the game and shown, but nothing is sent.
+**Status: 0.6.1 (beta).** Shows the game and can make every move found in the tested titles' finished games: shares, starting companies, bids and auctions, dividends, trains, tiles, stations and routes, private company powers, and title-specific steps (1817 loans, shorts, conversions, mergers and acquisitions; The Old Prince 1871 auctions, splits, Union Bank purchases, exchanges and the Hunslet), buying private companies, and bankruptcy as a last resort. **Sending is off by default:** in test mode every move is checked on a copy of the game and shown, but nothing is sent.
 
 ## Use
 
