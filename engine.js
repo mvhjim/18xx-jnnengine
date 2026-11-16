@@ -693,7 +693,8 @@
     var R = 86.6, ep = function (e) { var a = e * Math.PI / 3; return [-Math.sin(a) * R, Math.cos(a) * R]; }, f = function (v) { return v.toFixed(1); };
     var pts = '100,0 50,86.6 -50,86.6 -100,0 -50,-86.6 50,-86.6', paths = arr(call(tile, 'paths'));
     // where each city or town sits: in the middle if it is the only one, otherwise towards its own exits
-    var nodes = arr(call(tile, 'cities')).map(function (c) { return { o: c, city: true }; }).concat(arr(call(tile, 'towns')).map(function (t) { return { o: t, city: false }; }));
+    var allN = arr(call(tile, 'nodes')); if (!allN.length) allN = arr(call(tile, 'cities')).concat(arr(call(tile, 'towns')));
+    var nodes = allN.map(function (n) { return { o: n, city: truthy(call(n, 'city?')), town: truthy(call(n, 'town?')) }; });
     nodes.forEach(function (n) {
       var ex = [], nid = os(call(n.o, 'id'));
       paths.forEach(function (p) { if (arr(call(p, 'nodes')).some(function (x) { return x === n.o || (nid && os(call(x, 'id')) === nid); })) arr(call(p, 'exits')).forEach(function (e) { ex.push(num(e)); }); });
@@ -719,7 +720,7 @@
       else d = 'M' + f(a[0]) + ' ' + f(a[1]) + ' L' + f(b[0]) + ' ' + f(b[1]);
       return '<path d="' + d + '" stroke="#000" fill="none"' + sty + '/>';
     }).join('');
-    var dots = nodes.map(function (n) { return n.city ? '<circle cx="' + f(n.x) + '" cy="' + f(n.y) + '" r="' + (nodes.length > 1 ? 19 : 24) + '" fill="#fff" stroke="#000" stroke-width="4"/>' : '<circle cx="' + f(n.x) + '" cy="' + f(n.y) + '" r="10" fill="#000"/>'; }).join('');
+    var dots = nodes.map(function (n) { return n.city ? '<circle cx="' + f(n.x) + '" cy="' + f(n.y) + '" r="' + (nodes.length > 1 ? 19 : 24) + '" fill="#fff" stroke="#000" stroke-width="4"/>' : (n.town ? '<circle cx="' + f(n.x) + '" cy="' + f(n.y) + '" r="10" fill="#000"/>' : '<circle cx="' + f(n.x) + '" cy="' + f(n.y) + '" r="7" fill="#000"/>'); }).join('');
     return '<svg viewBox="-110 -112 220 224" width="74" height="76"><g transform="' + (layout === 'pointy' ? 'rotate(30)' : '') + '"><polygon points="' + pts + '" fill="' + col + '" stroke="#555" stroke-width="3"/>' + lines + dots + '</g>' +
       '<text x="0" y="108" text-anchor="middle" font-size="26" font-weight="600" fill="currentColor">' + esc(os(call(tile, 'name'))) + '</text></svg>';
   }
