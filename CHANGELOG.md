@@ -1,6 +1,27 @@
 # Changelog
 All notable changes to this project are listed here. The format follows [Keep a Changelog](https://keepachangelog.com), and versions follow [Semantic Versioning](https://semver.org).
 
+## [0.4.0] - 2026-11-16
+
+### Added
+- **1817 is a tested title** (moves can be sent there too, once sending is on).
+- **Special moves (tranche J5):**
+  - Loans: take and pay off loans, both in the operating round and, for the companies you run, in the stock round and the acquisition round.
+  - Short a share; convert a company; merge two companies; in acquisitions, choose which company buys.
+  - Choices the rules ask for, such as a new company's size (1817) or an amount (The Old Prince 1871).
+  - Putting private companies into a new company (1817), and offering a company for sale in an acquisition round.
+  - After a merger: choosing which stations to remove, including those of the company taken over. Discarding a train when a company has too many.
+  - Auctions of companies (1817): bid on a company being auctioned, or start one.
+  - **Private company powers:** using a private company's power now, for example exchanging it for a share, assigning it to a hex or a company, or laying a tile or placing a station with it (press *Use … on the map*).
+  - The Old Prince 1871: buying a share for the Union Bank with your own money.
+- Self-test results on 12 finished games, every move of every kind JNN-Engine makes: 1817 4 games, 4,287 of 4,287; 1846 402 of 402; 1862 2 games, 807 of 807; 1849: Kingdom of the Two Sicilies 2 games, 1,085 of 1,085; The Old Prince 1871 3 games, 1,383 of 1,383. Sample replays 10 of 10 in each game.
+
+### Not yet
+- Going bankrupt is left to the 18xx.games page on purpose.
+
+### Changed
+- Uses 18xx-JNNstats 0.37.3 as its known-good fallback.
+
 ## [0.3.0] - 2026-11-16
 
 ### Added

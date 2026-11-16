@@ -18,10 +18,10 @@
  */
 (function () {
   'use strict';
-  var VERSION = '0.3.0';
+  var VERSION = '0.4.0';
   var API_MAJOR = '1';                 // the JNN-API major version this code is written for
   var API_MIN = '1.1';                 // the oldest minor version it can use
-  var FALLBACK_SHA = '5c17e79';        // a JNN-stats release known to work, used if the latest is incompatible
+  var FALLBACK_SHA = 'bfabede';        // a JNN-stats release known to work, used if the latest is incompatible
   var STATS_CDN = 'https://cdn.jsdelivr.net/gh/mvhjim/18xx-jnnstats@';
   var REFRESH_MS = 60000;              // backup check only; new moves arrive through the site's own push channel
   // Titles tested with JNN-Engine. Others are shown, but sending moves (in later versions) stays off.
@@ -491,7 +491,9 @@
     if (ma.indexOf('lay_tile') >= 0 || ma.indexOf('place_token') >= 0) {
       var targets = {}; try { targets = mapTargets(g, ent, acts); } catch (e) {}
       var n = Object.keys(targets).length;
-      h += '<div class="mg"><div class="mgh">' + (ma.indexOf('lay_tile') >= 0 ? 'Lay a tile' : '') + (ma.indexOf('lay_tile') >= 0 && ma.indexOf('place_token') >= 0 ? ' or ' : '') + (ma.indexOf('place_token') >= 0 ? 'place a station' : '') + ': ' + (n ? 'pick one of the ' + n + ' outlined hexes on the board' : 'no hex is available') + '</div><div class="pick">' + mapPicker(J, d, targets) + '</div><div id="hexopts"></div></div>';
+      var ttl = (ma.indexOf('lay_tile') >= 0 ? 'lay a tile' : '') + (ma.indexOf('lay_tile') >= 0 && ma.indexOf('place_token') >= 0 ? ' or ' : '') + (ma.indexOf('place_token') >= 0 ? 'place a station' : '');
+      if (ent !== curEntity(g)) ttl = os(call(ent, 'name')) + ': ' + ttl; else ttl = ttl.charAt(0).toUpperCase() + ttl.slice(1);
+      h += '<div class="mg"><div class="mgh">' + esc(ttl) + ': ' + (n ? 'pick one of the ' + n + ' outlined hexes on the board' : 'no hex is available') + '</div><div class="pick">' + mapPicker(J, d, targets) + '</div><div id="hexopts"></div></div>';
       E.targets = targets;
     }
     if (ma.indexOf('run_routes') >= 0) h += '<div class="mg"><div class="mgh">Run trains</div><button class="pill" id="rr-find">Find the best routes</button> <span class="note">uses the site\'s own auto-router; to draw routes by hand, use the 18xx.games page</span><div id="rr-out"></div></div>';
