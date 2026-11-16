@@ -508,7 +508,10 @@
           var jb = jobs[i++], h = JSON.parse(JSON.stringify(jb.o.h)); if (jb.o.amount) h[jb.o.amount.key] = jb.o.amount.min;
           res.tried++;
           try { dryRun(J, jb.text, h); res.ok++; }
-          catch (e) { res.byType[h.type] = (res.byType[h.type] || 0) + 1; if (res.bad.length < 25) res.bad.push({ k: jb.k, label: jb.o.label, err: (e.message || String(e)).slice(0, 160), h: JSON.stringify(h).slice(0, 200) }); }
+          catch (e) {
+            var em = e.message || String(e);
+            if (h.type === 'lay_tile' && /must use new track|new track must|must be city tile or use new track/i.test(em)) { res.late = (res.late || 0) + 1; continue; }
+            res.byType[h.type] = (res.byType[h.type] || 0) + 1; if (res.bad.length < 25) res.bad.push({ k: jb.k, label: jb.o.label, err: (e.message || String(e)).slice(0, 160), h: JSON.stringify(h).slice(0, 200) }); }
         }
         if (i >= jobs.length) { res.ms = Date.now() - t0; resolve(res); return; }
         setTimeout(next, 0);
@@ -577,9 +580,8 @@
       var ts = stepFor(g, ent, 'lay_tile'), tiles = [];
       try { tiles = arr(ts.$upgradeable_tiles(ent, hex)); } catch (e) {}
       tiles.forEach(function (tile) {
-        var rots = arr(call(tile, 'legal_rotations')).map(num).filter(function (r) {
-          try { tile['$rotate!'](r); if (has(ts, 'check_track_restrictions!')) ts['$check_track_restrictions!'](ent, hex.$tile(), tile); return true; } catch (e) { return false; }
-        });
+        // the same rotations the site offers; its "new track" rule is only checked when the tile is laid (the confirmation shows it)
+        var rots = arr(call(tile, 'legal_rotations')).map(num);
         rots.forEach(function (r) {
           var h = { type: 'lay_tile', entity: ej.entity, entity_type: ej.entity_type, hex: hexId, tile: os(tile.$id()), rotation: r };
           out.push({ group: 'Tile on ' + hexId, label: 'Tile ' + os(tile.$name()) + ', rotation ' + (rots.indexOf(r) + 1) + ' of ' + rots.length, h: h, svg: tileSvg(tile, r, os(call(hex, 'layout')) || 'flat') });

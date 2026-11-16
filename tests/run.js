@@ -31,9 +31,9 @@
         row.moves = x.self.found + '/' + x.self.moves;
         row.missing = Object.keys(x.self.missingByType).map(function (k) { return k + ' ' + x.self.missingByType[k]; }).join(', ') || '-';
         row.replay = x.self.replayed;
-        row.choices = x.options.ok + '/' + x.options.tried + ' at ' + x.options.positions + ' positions';
+        row.choices = x.options.ok + '/' + (x.options.tried - (x.options.late || 0)) + ' at ' + x.options.positions + ' positions' + (x.options.late ? ' (+' + x.options.late + ' tiles refused on laying, as on the site)' : '');
         row.refused = Object.keys(x.options.byType).map(function (k) { return k + ' ' + x.options.byType[k]; }).join(', ') || '-';
-        row.ok = x.self.found === x.self.moves && x.options.ok === x.options.tried && !x.self.replayDiffs.length;
+        row.ok = x.self.found === x.self.moves && x.options.ok === x.options.tried - (x.options.late || 0) && !x.self.replayDiffs.length;
         row._detail = { missing: x.self.missing, replayDiffs: x.self.replayDiffs, refused: x.options.bad };
       } catch (e) { row.error = e.message; row.ok = false; }
       window.__jnnTestRows.push(row);
