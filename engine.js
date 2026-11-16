@@ -434,6 +434,46 @@
   E._moveOptions = moveOptions;
   // for testing: show game id at its first n moves (sending is always off), or null to go back
   E.preview = function (id, n) { E.fixed = id ? { id: id, n: n } : null; E.game = null; E.q = null; return cycle(true); };
+  // ---------- Automatic option test (J7) -------------------------------------------------------
+  // At sampled positions of a game, try every choice JNN-Engine offers on a copy and check the rules engine accepts it.
+  // This finds the opposite mistake to selfTest: offering a move that is not allowed.
+  function optionTest(J, text, cfg) {
+    cfg = cfg || {}; var positions = cfg.positions || 8, maxOpts = cfg.maxOpts || 14;
+    var raw = JSON.parse(text), acts0 = raw.actions || [], cand = [];
+    acts0.forEach(function (a, i) { if (i > 0 && ['undo', 'redo', 'message'].indexOf(a.type) < 0) cand.push(i); });
+    var picks = []; for (var q = 0; q < positions && cand.length; q++) { var v = cand[Math.floor((q + 0.5) * cand.length / positions)]; if (picks.indexOf(v) < 0) picks.push(v); }
+    var res = { title: raw.title, positions: 0, tried: 0, ok: 0, bad: [], byType: {}, ms: 0 }, t0 = Date.now(), jobs = [];
+    picks.forEach(function (k) {
+      var jt = JSON.parse(text); jt.actions = acts0.slice(0, k); jt.status = 'active'; delete jt.result; var tk = JSON.stringify(jt);
+      var g; try { g = J.loadGame(tk); } catch (e) { return; }
+      if (truthy(call(g, 'finished'))) return;
+      var ent = curEntity(g); if (!ent) return; res.positions++;
+      var acts = []; try { acts = arr(g.$round().$actions_for(ent)).map(os); } catch (e) {}
+      var opts = []; try { opts = moveOptions(g, ent, acts).concat(extraOptions(g, ent).filter(function (o) { return !o.mapUse; })); } catch (e) { res.bad.push({ k: k, label: 'reading the choices', err: e.message }); }
+      try {
+        var tg = mapTargets(g, ent, acts), hx = Object.keys(tg);
+        [hx[0], hx[Math.floor(hx.length / 2)], hx[hx.length - 1]].filter(function (x, i, A) { return x && A.indexOf(x) === i; }).forEach(function (id) { var ho = hexOptions(g, ent, id, tg[id]); opts = opts.concat(ho.slice(0, 2), ho.slice(-1)); });
+      } catch (e) { res.bad.push({ k: k, label: 'reading the map choices', err: e.message }); }
+      // a spread of the choices, so big lists (many shares, many bids) are still covered
+      if (opts.length > maxOpts) { var o2 = []; for (var z = 0; z < maxOpts; z++) o2.push(opts[Math.floor(z * opts.length / maxOpts)]); opts = o2; }
+      opts.forEach(function (o) { jobs.push({ k: k, text: tk, o: o }); });
+    });
+    // run the dry runs one at a time with short breaks, so the page stays responsive
+    return new Promise(function (resolve) {
+      var i = 0;
+      (function next() {
+        if (i >= jobs.length) { res.ms = Date.now() - t0; resolve(res); return; }
+        var jb = jobs[i++], h = JSON.parse(JSON.stringify(jb.o.h)); if (jb.o.amount) h[jb.o.amount.key] = jb.o.amount.min;
+        res.tried++;
+        try { dryRun(J, jb.text, h); res.ok++; }
+        catch (e) { res.byType[h.type] = (res.byType[h.type] || 0) + 1; if (res.bad.length < 25) res.bad.push({ k: jb.k, label: jb.o.label, err: (e.message || String(e)).slice(0, 160), h: JSON.stringify(h).slice(0, 200) }); }
+        setTimeout(next, 0);
+      })();
+    });
+  }
+  E.optionTest = function (id, cfg) { return pickStats().then(loadStats).then(function (J) { return J.fetchGameText(id || gid).then(function (t) { var raw = JSON.parse(t); return J.ensureTitle(raw.title).then(function () { return optionTest(J, t, cfg); }); }); }); };
+  // both tests on one finished game, with a single fetch
+  E.testGame = function (id, cfg) { return pickStats().then(loadStats).then(function (J) { return J.fetchGameText(id).then(function (t) { var raw = JSON.parse(t); return J.ensureTitle(raw.title).then(function () { var st = selfTest(J, t); return optionTest(J, t, cfg).then(function (ot) { return { title: raw.title, status: raw.status, self: st, options: ot }; }); }); }); }); };
   E.selfTest = function (id) { return pickStats().then(loadStats).then(function (J) { return J.fetchGameText(id || gid).then(function (t) { var raw = JSON.parse(t); return J.ensureTitle(raw.title).then(function () { return selfTest(J, t); }); }); }); };
 
   // ---------- Map moves (J4): tiles, stations, routes ------------------------------------------
