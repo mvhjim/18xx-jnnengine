@@ -776,15 +776,17 @@
     E.opts = opts;
     var other = acts.filter(function (a) { return SENDABLE.indexOf(a) < 0 && MAPACTS.indexOf(a) < 0 && ['end_game', 'message', 'undo', 'redo', 'log', 'bankrupt'].indexOf(a) < 0 && !/^program_/.test(a); });
     var groups = []; opts.forEach(function (o, i) { var gr = groups.filter(function (x) { return x.name === o.group; })[0]; if (!gr) { gr = { name: o.group, items: [] }; groups.push(gr); } gr.items.push(i); });
-    var shownHelp = {};
-    var h = groups.map(function (gr) {
+    var shownHelp = {}, lastGroups = groups.filter(function (gr) { return gr.name === 'Last resort'; }); groups = groups.filter(function (gr) { return gr.name !== 'Last resort'; });
+    var groupHtml = function (gr) {
       var tp = opts[gr.items[0]] && opts[gr.items[0]].h && opts[gr.items[0]].h.type, ht = HELP[tp];
       if (tp === 'pass') { var rn = ''; try { rn = os(E.game.g.$round().$name()); } catch (e) {} ht = /auction|draft/i.test(rn) ? 'Pass: do not bid or buy now. In an auction this usually means you are out of it.' : /operating/i.test(rn) ? 'Pass: skip this part of the company\'s turn (for example no tile, or no train).' : HELP.pass; }
       var hl = E.J && E.J.learnLevel() && ht && !shownHelp[tp] ? '<div class="help">' + esc(ht) + '</div>' : ''; if (hl) shownHelp[tp] = 1;
       return '<div class="mg"><div class="mgh">' + esc(gr.name) + '</div>' + hl + gr.items.map(function (i) { var o = opts[i];
         return '<span class="mo">' + (o.amount ? '<input type="number" class="amt" data-i="' + i + '" min="' + o.amount.min + '" max="' + o.amount.max + '" value="' + o.amount.min + '">' : '') + '<button class="pill jmv' + (o.unsure ? ' unsure' : '') + '" data-i="' + i + '"' + (o.unsure ? ' title="The rules check this only when the move is made"' : '') + '>' + esc(o.label) + '</button></span>'; }).join('') + '</div>';
-    }).join('');
+    };
+    var h = groups.map(groupHtml).join('');
     try { h += mapMovesHtml(E.J, d, acts); } catch (eM) { h += '<p class="note">Could not read the map choices: ' + esc(eM.message) + '</p>'; }
+    h += lastGroups.map(groupHtml).join('').replace('<div class="mg">', '<div class="mg lr">');
     if (other.length) h += '<p class="note">Also possible now, but not in JNN-Engine yet (use the 18xx.games page): ' + other.map(function (a) { return esc(a.replace(/_/g, ' ')); }).join(', ') + '.</p>';
     var u = pageUser(), mode = !sup ? 'This title is not tested with JNN-Engine: you can try moves here, but they are never sent.' : !sendOn() ? 'Test mode: moves are checked on a copy of the game and shown, but not sent. Switch sending on above when you are ready.' : !u ? 'You are not logged in on this page, so moves are not sent.' : 'Sending is on: a move is sent to 18xx.games only after you confirm it.';
     return (h || '<p class="note">Nothing JNN-Engine can do in this step yet; use the 18xx.games page.</p>') + '<p class="note">' + esc(mode) + '</p>';
@@ -842,7 +844,7 @@
     '.why{color:var(--text-secondary)}.help{color:var(--text-secondary);font-size:12.5px;margin:0 0 5px}.ack{display:block;margin:6px 0}',
     '.pick svg{width:100%;height:auto}.hx{fill:rgba(57,135,229,.28);stroke:#3987e5;stroke-width:3.5;cursor:pointer}.hx:hover{fill:rgba(57,135,229,.38)}.hx.sel{fill:rgba(46,158,91,.4);stroke:#2e9e5b;stroke-width:3}',
     '.hxchips{display:flex;flex-wrap:wrap;gap:4px;margin:0 0 6px}.hxchip{background:transparent;border:1px solid var(--grid);color:var(--text-secondary);border-radius:999px;padding:2px 8px;font-size:11px;cursor:pointer}.hxchip:hover,.hxchip.sel{border-color:#3987e5;color:var(--text-primary)}',
-    '.pill.jmv{background:var(--surface-0);border:1px solid var(--grid);color:var(--text-primary);padding:4px 10px;font-size:12px;cursor:pointer}.pill.jmv:hover{border-color:var(--accent);color:var(--accent)}.pill.jmv.unsure{border-style:dashed}',
+    'button.pill{background:var(--surface-0);border:1px solid var(--grid);color:var(--text-primary);padding:4px 10px;font-size:12px;cursor:pointer;border-radius:999px}button.pill:hover:not([disabled]){border-color:var(--accent);color:var(--accent)}button.pill[disabled]{opacity:.5;cursor:default}.mg.lr .mgh{color:#d6336c}.pill.jmv.unsure{border-style:dashed}',
     '.tiles{display:flex;flex-wrap:wrap;gap:6px}.tilebtn{background:var(--surface-0);border:1px solid var(--grid);border-radius:8px;padding:2px;cursor:pointer}.tilebtn:hover{border-color:var(--accent)}'
   ].join('\n');
   var ACT = { pass: 'Pass', bid: 'Bid', par: 'Start a company', buy_shares: 'Buy shares', sell_shares: 'Sell shares', lay_tile: 'Lay a tile', place_token: 'Place a station',
