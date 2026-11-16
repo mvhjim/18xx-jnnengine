@@ -458,7 +458,7 @@
     if (gm) {
       L.push('Title: ' + gm.raw.title + (withGame ? ', game ' + gid : '') + ', ' + gm.raw.actions.length + ' moves, status ' + gm.raw.status);
       try { L.push('Round: ' + os(g.$round().$name()) + ' ' + os(g.$turn()) + '.' + os(call(g.$round(), 'round_num')) + ', phase ' + os(g.$phase().$name())); } catch (e) {}
-      try { var st = g.$round().$active_step(), ent = curEntity(g); L.push('Step: ' + os(st.$class().$name()) + ', to act: ' + (truthy(call(ent, 'player?')) ? 'a player' : os(call(ent, 'name'))) + ', allowed: ' + arr(g.$round().$actions_for(ent)).map(os).join(' ')); } catch (e) {}
+      try { var st = g.$round().$active_step(), ent = curEntity(g); L.push('Step: ' + os(st.$class().$name()) + ', to act: ' + (truthy(call(ent, 'player?')) ? 'a player' : os(call(ent, 'name'))) + ', allowed: ' + arr(g.$round().$actions_for(ent)).map(os).filter(function (a) { return !/^program_|^(log|message|end_game)$/.test(a); }).join(' ')); } catch (e) {}
     }
     L.push('Sending: ' + (sendOn() ? 'on' : 'off (test mode)') + ', Learning mode: ' + (E.J && E.J.learnLevel() || 'off') + ', privacy: ' + (E.J && E.J.privacyOn() ? 'on' : 'off'));
     L.push('Browser: ' + navigator.userAgent);
