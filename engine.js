@@ -313,7 +313,8 @@
       var owner = null; try { owner = g.$token_owner(ent); } catch (e) {}
       tileCities(hex).forEach(function (c, ci) {
         try { if (!truthy(c['$tokenable?'](ent))) return; } catch (e) { return; }
-        var slot = 0; try { slot = arr(c.$tokens()).findIndex(function (x) { return nil(x); }); } catch (e) {} if (slot < 0) slot = 0;
+        var slot = null; try { slot = c.$get_slot(owner || ent); slot = nil(slot) ? null : num(slot); } catch (e) {}
+        if (slot == null) { try { slot = arr(c.$tokens()).findIndex(function (x) { return nil(x); }); } catch (e) {} if (slot < 0) slot = 0; }
         var h = { type: 'place_token', entity: ej.entity, entity_type: ej.entity_type, city: os(c.$id()), slot: slot };
         if (owner) h.tokener = os(owner.$id());
         var tt = toks[0] ? os(call(toks[0], 'type')) : ''; if (tt && tt !== 'normal') h.token_type = tt;
