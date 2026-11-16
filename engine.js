@@ -332,7 +332,14 @@
       arr(call(entity, 'trains')).forEach(function (t) { try { add('Discard a train', 'Discard the ' + nm(t) + ' train', mk('DiscardTrain', { train: t })); } catch (e) {} });
     }
     // last, and on purpose at the end: allowed by the rules but rarely wise
-    if (can('bankrupt')) { try { add('Last resort', 'Declare bankruptcy', mk('Bankrupt', {})); } catch (e) {} }
+    if (can('bankrupt')) {
+      // only when the rules would accept it (the site lists it in many steps but refuses it unless there is no way to pay)
+      try {
+        var sb = g.$round().$step_for(entity, 'bankrupt'), okB = !nil(sb) && has(sb, 'process_bankrupt');
+        if (okB && has(g, 'can_go_bankrupt?')) { var pl = truthy(call(entity, 'player?')) ? entity : call(entity, 'owner'); okB = truthy(g['$can_go_bankrupt?'](pl, truthy(call(entity, 'corporation?')) ? entity : Opal.nil)); }
+        if (okB) add('Last resort', 'Declare bankruptcy', mk('Bankrupt', {}));
+      } catch (e) {}
+    }
     out.forEach(function (o) { Object.keys(o.h).forEach(function (k) { if (o.h[k] === undefined) delete o.h[k]; }); });
     return out;
   }
