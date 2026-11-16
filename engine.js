@@ -295,14 +295,86 @@
   }
   // Try a move on a fresh copy of the game: the new log lines, the JSON the page would send, or the engine's reason it is not allowed
   function dryRun(J, text, h) {
-    var g = J.loadGame(text), before = arr(g.$log()).length;
+    var g = J.loadGame(text), before = arr(g.$log()).length, s0 = null, actor = null;
+    try { s0 = snap(g); var ent0 = g.$get(h.entity_type, h.entity); actor = truthy(call(ent0, 'player?')) ? os(ent0.$name()) : (call(ent0, 'owner') && truthy(call(ent0.$owner(), 'player?')) ? os(ent0.$owner().$name()) : null); } catch (e) {}
     var action = Opal.Engine.Action.Base.$action_from_h(Opal.JSON.$parse(JSON.stringify(h)), g);
     var g2 = g.$process_action(action, Opal.hash({ add_auto_actions: true }));
     var ex = call(g2, 'exception'); if (ex) throw new Error(os(call(ex, 'message')) || os(ex));
     var log = arr(g2.$log()).slice(before).map(function (l) { return os(call(l, 'message')); }).filter(Boolean);
     var json = action.$to_h().$to_n(), actors = []; try { actors = arr(g.$valid_actors(action)).map(function (p) { return num(p.$id()); }); } catch (e) {}
-    return { log: log, json: json, actors: actors };
+    var warns = []; try { if (s0) warns = moveWarnings(g2, s0, snap(g2), h, actor); } catch (e) {}
+    return { log: log, json: json, actors: actors, warns: warns };
   }
+  // ---------- Learning and warnings (J6) --------------------------------------------------------
+  // A snapshot of what matters before and after a move, so the confirmation can say what it really changes.
+  function snap(g) {
+    var s = { phase: '', players: {}, corps: {} };
+    try { s.phase = os(g.$phase().$name()); } catch (e) {}
+    arr(g.$players()).forEach(function (p) {
+      var lim = null; try { lim = num(g.$cert_limit(p)); } catch (e) { try { lim = num(g.$cert_limit()); } catch (e2) {} }
+      var certs = null; try { certs = num(g.$num_certs(p)); } catch (e) {}
+      s.players[os(p.$name())] = { cash: num(p.$cash()), certs: certs, limit: lim };
+    });
+    arr(g.$corporations()).forEach(function (c) {
+      if (truthy(call(c, 'closed?'))) return;
+      var sp = call(c, 'share_price'), own = call(c, 'owner');
+      s.corps[os(c.$name())] = { price: sp ? num(call(sp, 'price')) : null, zone: sp ? arr(call(sp, 'types')).map(os) : [], cash: num(call(c, 'cash')),
+        trains: arr(call(c, 'trains')).map(function (t) { return os(call(t, 'name')); }), pres: own && truthy(call(own, 'player?')) ? os(own.$name()) : null,
+        loans: arr(call(c, 'loans')).length, interest: (function () { try { return num(g.$interest_owed(c)); } catch (e) { return null; } })(), floated: truthy(call(c, 'floated?')) };
+    });
+    return s;
+  }
+  // What a move changes that a player could easily miss. level 'warn' = think twice, 'info' = good to know.
+  function moveWarnings(g, a, b, h, actor) {
+    var out = [], money = function (v) { try { return os(g.$format_currency(v)); } catch (e) { return String(v); } }, W = function (lv, t) { out.push({ lv: lv, t: t }); };
+    if (b.phase && a.phase && b.phase !== a.phase) W('info', 'The phase changes from ' + a.phase + ' to ' + b.phase + '.');
+    Object.keys(a.corps).forEach(function (n) {
+      var x = a.corps[n], y = b.corps[n];
+      if (!y) { W('warn', n + ' closes.'); return; }
+      var lost = x.trains.slice(); y.trains.forEach(function (t) { var i = lost.indexOf(t); if (i >= 0) lost.splice(i, 1); });
+      if (lost.length && h.type === 'buy_train' && String(h.entity) !== n) W(x.pres === actor ? 'warn' : 'info', n + ' loses ' + (lost.length === 1 ? 'its ' + lost[0] + ' train' : lost.length + ' trains (' + lost.join(', ') + ')') + (y.trains.length ? '' : ' and is left with no train') + '.');
+      else if (lost.length && h.type === 'buy_train' && String(h.entity) === n && lost.length > 0 && y.trains.length <= x.trains.length) W('warn', n + ' loses ' + lost.join(', ') + ' in the same purchase.');
+      if (x.pres && y.pres && x.pres !== y.pres) W(x.pres === actor ? 'warn' : 'info', y.pres + ' becomes the president of ' + n + (x.pres === actor ? ' (you lose it)' : '') + '.');
+      if (x.price != null && y.price != null && y.price !== x.price) W(y.price < x.price && x.pres === actor ? 'warn' : 'info', n + '\'s share price ' + (y.price > x.price ? 'rises' : 'falls') + ' from ' + money(x.price) + ' to ' + money(y.price) + '.');
+      var bad = ['liquidation', 'acquisition', 'close'].filter(function (z) { return y.zone.indexOf(z) >= 0 && x.zone.indexOf(z) < 0; });
+      if (bad.length) W('warn', n + '\'s price enters the ' + bad[0] + ' zone' + (bad[0] === 'acquisition' ? ': it can be bought by another company' : bad[0] === 'liquidation' ? ': it can be liquidated' : '') + '.');
+      if (y.loans > x.loans) W('info', n + ' will have ' + y.loans + ' loan' + (y.loans > 1 ? 's' : '') + (y.interest != null ? ', ' + money(y.interest) + ' interest each operating round' : '') + '.');
+      if (y.floated && x.trains.length && !y.trains.length && h.type !== 'buy_train') W('warn', n + ' is left with no train.');
+    });
+    var p0 = a.players[actor], p1 = b.players[actor];
+    if (p0 && p1) {
+      if (p1.cash < 0) W('warn', actor + ' would be in debt (' + money(p1.cash) + ').');
+      else if (h.type === 'buy_train' && p1.cash < p0.cash) W('warn', actor + ' pays ' + money(p0.cash - p1.cash) + ' of their own money toward the train.');
+      else if (p1.cash === 0 && p0.cash > 0) W('info', actor + ' has no cash left after this.');
+      if (p1.limit != null && p1.certs != null) { if (p1.certs > p1.limit) W('warn', actor + ' goes over the certificate limit (' + p1.certs + ' of ' + p1.limit + ').'); else if (p1.certs === p1.limit && p0.certs < p1.limit) W('info', actor + ' reaches the certificate limit (' + p1.limit + ').'); }
+    }
+    if (h.type === 'short') W('info', 'While you hold a short you pay that company\'s dividends on the share, and you must buy it back later.');
+    if (h.type === 'dividend' && h.kind === 'withhold') W('info', 'Withholding keeps the money in the company, but the share price usually falls.');
+    if (h.type === 'pass' && /auction|bid/i.test(os(call(call(g.$round(), 'active_step'), 'class')))) W('info', 'Passing in an auction usually means you are out of this auction.');
+    return out;
+  }
+  // a one-line explanation for each kind of move, shown in Learning mode
+  var HELP = {
+    pass: 'Pass: do nothing now. In a stock round, if everyone passes in a row the round ends.',
+    bid: 'An auction: the highest bid wins. You need the money for your bid.',
+    par: 'Start a company: choose its first share price; you buy the president\'s certificate at that price.',
+    buy_shares: 'Buying shares: more shares mean more dividends, and the biggest holder runs the company.',
+    sell_shares: 'Selling shares: money now, but the price usually falls and you may lose a presidency.',
+    dividend: 'Pay out: shareholders get the money and the price rises. Withhold: the company keeps it and the price usually falls.',
+    buy_train: 'A company needs a train to earn money. The first train of a new kind can change the phase and make older trains rust.',
+    lay_tile: 'Tiles extend and upgrade the track; better track lets trains reach more and richer stops.',
+    place_token: 'A station lets the company run trains from that city and can block others.',
+    run_routes: 'Each train runs a route between stations and cities; the revenue is paid out or kept.',
+    take_loan: 'A loan gives cash now; the company pays interest every operating round.',
+    payoff_loan: 'Paying off a loan stops its interest.',
+    short: 'A short is a bet that the price will fall: you sell a share you do not own and must buy it back later.',
+    convert: 'Converting gives a company more shares (and new shares to sell).',
+    merge: 'Merging joins two companies into one.',
+    choose: 'The rules need a choice from you here.',
+    assign: 'Assigning puts a private company (or its power) to use.',
+    remove_token: 'After a merger a company may have too many stations; choose which to give up.',
+    discard_train: 'The company has more trains than it may keep; choose one to give up.'
+  };
   function pageUser() {
     try {
       var sc = Array.prototype.map.call(document.scripts, function (s) { return s.textContent; }).filter(function (t) { return t.indexOf("Opal.App.$attach('app'") >= 0; })[0] || '';
@@ -547,7 +619,8 @@
     var other = acts.filter(function (a) { return SENDABLE.indexOf(a) < 0 && MAPACTS.indexOf(a) < 0 && ['end_game', 'message', 'undo', 'redo', 'log', 'bankrupt'].indexOf(a) < 0 && !/^program_/.test(a); });
     var groups = []; opts.forEach(function (o, i) { var gr = groups.filter(function (x) { return x.name === o.group; })[0]; if (!gr) { gr = { name: o.group, items: [] }; groups.push(gr); } gr.items.push(i); });
     var h = groups.map(function (gr) {
-      return '<div class="mg"><div class="mgh">' + esc(gr.name) + '</div>' + gr.items.map(function (i) { var o = opts[i];
+      var tp = opts[gr.items[0]] && opts[gr.items[0]].h && opts[gr.items[0]].h.type, hl = E.J && E.J.learnLevel() && HELP[tp] ? '<div class="help">' + esc(HELP[tp]) + '</div>' : '';
+      return '<div class="mg"><div class="mgh">' + esc(gr.name) + '</div>' + hl + gr.items.map(function (i) { var o = opts[i];
         return '<span class="mo">' + (o.amount ? '<input type="number" class="amt" data-i="' + i + '" min="' + o.amount.min + '" max="' + o.amount.max + '" value="' + o.amount.min + '">' : '') + '<button class="pill jmv" data-i="' + i + '">' + esc(o.label) + '</button></span>'; }).join('') + '</div>';
     }).join('');
     try { h += mapMovesHtml(E.J, d, acts); } catch (eM) { h += '<p class="note">Could not read the map choices: ' + esc(eM.message) + '</p>'; }
@@ -567,11 +640,15 @@
       var u = pageUser(), sup = SUPPORTED.indexOf(E.game.raw.title) >= 0, pinned = !!(E.game.raw.settings && E.game.raw.settings.pin);
       var mine = r && u && r.actors.indexOf(u.id) >= 0, canSend = !err && !E.fixed && sendOn() && sup && !pinned && mine && E.game.raw.status !== 'finished';
       var why = err ? '' : E.fixed ? 'this is a test preview of an earlier position' : !sup ? 'not a tested title' : pinned ? 'pinned games are not supported' : !sendOn() ? 'test mode is on' : !u ? 'you are not logged in on this page' : !mine ? 'it is not your move (only the player whose turn it is may make it)' : '';
+      var risky = !err && r && r.warns.some(function (x) { return x.lv === 'warn'; });
       box.innerHTML = '<div class="cb"><h3>' + esc(o.label) + '</h3>' + (err ? '<p class="bad">The rules engine does not allow this move: ' + esc(err) + '</p>' :
-        '<p>This is what will happen:</p><ul>' + r.log.map(function (l) { return '<li>' + esc(l) + '</li>'; }).join('') + '</ul><details><summary>What would be sent</summary><pre>' + esc(JSON.stringify(r.json, null, 1)) + '</pre></details>') +
+        (r.warns.length ? '<div class="warns">' + r.warns.map(function (x) { return '<p class="' + (x.lv === 'warn' ? 'wn' : 'wi') + '">' + (x.lv === 'warn' ? '⚠ ' : 'ℹ ') + esc(x.t) + '</p>'; }).join('') + '</div>' : '') +
+        '<p>This is what will happen:</p><ul>' + r.log.map(function (l) { var why = null; if (J.learnLevel() && E.d) { try { why = J.whyLine(E.d, l); } catch (e) {} } return '<li>' + esc(l) + (why ? '<br><small class="why">' + esc(why) + '</small>' : '') + '</li>'; }).join('') + '</ul><details><summary>What would be sent</summary><pre>' + esc(JSON.stringify(r.json, null, 1)) + '</pre></details>') +
         '<p class="note">' + (canSend ? 'Press Send to make this move on 18xx.games. It is checked again against the latest game first.' : err ? '' : 'Not sent: ' + esc(why) + '.') + '</p>' +
-        '<div class="cbb">' + (canSend ? '<button class="pill go" id="cb-send">Send</button>' : '') + '<button class="pill" id="cb-x">' + (canSend ? 'Cancel' : 'Close') + '</button></div></div>';
+        (canSend && risky ? '<label class="ack"><input type="checkbox" id="cb-ack"> I have read the warnings above</label>' : '') +
+        '<div class="cbb">' + (canSend ? '<button class="pill go" id="cb-send"' + (risky ? ' disabled' : '') + '>Send</button>' : '') + '<button class="pill" id="cb-x">' + (canSend ? 'Cancel' : 'Close') + '</button></div></div>';
       doc.getElementById('cb-x').onclick = function () { box.remove(); };
+      var ack = doc.getElementById('cb-ack'); if (ack) ack.onchange = function () { var sb2 = doc.getElementById('cb-send'); if (sb2) sb2.disabled = !ack.checked; };
       var sb = doc.getElementById('cb-send');
       if (sb) sb.onclick = function () {
         sb.disabled = true; sb.textContent = 'Sending…';
@@ -600,6 +677,8 @@
     '#cbox{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:flex-start;justify-content:center;z-index:50;padding-top:8vh}.cb{background:var(--surface-1);border:1px solid var(--grid);border-radius:12px;padding:14px 18px;max-width:560px;width:92%;max-height:80vh;overflow:auto;box-shadow:0 10px 30px rgba(0,0,0,.35)}',
     '.cb h3{margin:0 0 8px}.cb pre{font-size:11px;white-space:pre-wrap}.cbb{display:flex;gap:8px;justify-content:flex-end;margin-top:8px}.go{background:var(--accent)!important;color:#fff!important}.bad{color:#d9534f}',
     '.sendsw{cursor:pointer;margin-left:6px}.sendsw.on{background:#2e9e5b;color:#fff}',
+    '.warns{margin:6px 0}.warns p{margin:4px 0;padding:5px 8px;border-radius:6px}.wn{background:rgba(214,51,108,.14);border-left:3px solid #d6336c}.wi{background:rgba(57,135,229,.12);border-left:3px solid #3987e5}',
+    '.why{color:var(--text-secondary)}.help{color:var(--text-secondary);font-size:12.5px;margin:0 0 5px}.ack{display:block;margin:6px 0}',
     '.pick svg{width:100%;height:auto}.hx{fill:rgba(57,135,229,.18);stroke:#3987e5;stroke-width:2.2;cursor:pointer}.hx:hover{fill:rgba(57,135,229,.38)}.hx.sel{fill:rgba(46,158,91,.4);stroke:#2e9e5b;stroke-width:3}',
     '.tiles{display:flex;flex-wrap:wrap;gap:6px}.tilebtn{background:var(--surface-0);border:1px solid var(--grid);border-radius:8px;padding:2px;cursor:pointer}.tilebtn:hover{border-color:var(--accent)}'
   ].join('\n');
@@ -608,7 +687,7 @@
     take_loan: 'Take a loan', payoff_loan: 'Repay a loan', short: 'Short', choose: 'Choose', assign: 'Assign', convert: 'Convert', merge: 'Merge', sell_company: 'Sell a private' };
 
   function draw(J) {
-    var gm = E.game, d = J.extract(gm.g, gm.raw), doc = w.document, dark = J.isDark(w), m = d.money;
+    var gm = E.game, d = E.d = J.extract(gm.g, gm.raw), doc = w.document, dark = J.isDark(w), m = d.money;
     J.setDark(dark);
     var names = d.players.map(function (p) { return p.name; }), me = J.myName(names), pal = J.palette(dark);
     var pc = {}; d.players.forEach(function (p) { pc[p.name] = pal[p.idx % pal.length]; });
