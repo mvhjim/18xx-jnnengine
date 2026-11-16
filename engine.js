@@ -107,7 +107,7 @@
   function arr(o) { if (nil(o)) return []; if (Array.isArray(o)) return o; if (has(o, 'to_a')) return o.$to_a(); return []; }
   function num(o) { var v = nil(o) ? null : Number(o); return v == null || isNaN(v) ? null : v; }
   function hget(h, k) { if (nil(h)) return null; try { var v = h['$[]'](k); if (nil(v) && Opal.Symbol) v = null; return nil(v) ? null : v; } catch (e) { return null; } }
-  var SENDABLE = ['pass', 'bid', 'par', 'buy_shares', 'sell_shares', 'dividend', 'buy_train', 'take_loan', 'payoff_loan', 'short', 'convert', 'merge', 'choose', 'assign', 'remove_token', 'discard_train', 'offer', 'split', 'buy_company'];
+  var SENDABLE = ['pass', 'bid', 'par', 'buy_shares', 'sell_shares', 'dividend', 'buy_train', 'take_loan', 'payoff_loan', 'short', 'convert', 'merge', 'choose', 'assign', 'remove_token', 'discard_train', 'offer', 'split', 'buy_company', 'purchase_train'];
   // the options for one entity in the current step; each is { group, label, h: action JSON (without id), amount?: {min, max, key} }
   function moveOptions(g, entity, acts) {
     var out = [], round = g.$round(), active = round.$active_step(), step = active, id = os(call(entity, 'id')), etype = truthy(call(entity, 'player?')) ? 'player' : truthy(call(entity, 'corporation?')) ? 'corporation' : truthy(call(entity, 'minor?')) ? 'minor' : call(entity, 'company?') ? 'company' : 'player';
@@ -291,6 +291,10 @@
         } catch (e) {}
       });
     }
+    if (can('purchase_train')) {
+      // a private company's power to buy the next train (The Old Prince 1871: the Hunslet)
+      try { var ct = has(step, 'current_train') ? step.$current_train() : null; add('Use ' + nm(entity), 'Close ' + nm(entity) + ' to buy the next train' + (ct && !nil(ct) ? ' (a ' + nm(ct) + ' for ' + money(num(call(ct, 'price'))) + ')' : ''), mk('PurchaseTrain', {})); } catch (e) {}
+    }
     if (can('offer')) {
       // The Old Prince 1871: put a private company up for auction
       var oc = []; try { oc = arr(has(step, 'companies') ? step.$companies() : has(step, 'available') ? step.$available() : []); } catch (e) {}
@@ -441,7 +445,7 @@
       if (o && o.amount) { var v = a[o.amount.key]; if (v == null || +v < o.amount.min || +v > o.amount.max) return false; h = JSON.parse(JSON.stringify(h)); h[o.amount.key] = v; }
       if (h.type !== a.type || String(h.entity) !== String(a.entity)) return false;
       var keys = { buy_shares: ['shares', 'purchase_for'], sell_shares: ['shares'], par: ['corporation', 'share_price'], dividend: ['kind'], buy_train: ['train', 'variant'], bid: ['company', 'minor', 'corporation'], pass: [],
-        take_loan: [], payoff_loan: [], short: ['corporation'], convert: [], merge: ['corporation', 'minor'], choose: ['choice'], offer: ['company'], buy_company: ['company'], split: ['corporation'], assign: ['target', 'target_type'], remove_token: ['city'], discard_train: ['train'] }[h.type] || [];
+        take_loan: [], payoff_loan: [], short: ['corporation'], convert: [], merge: ['corporation', 'minor'], choose: ['choice'], offer: ['company'], buy_company: ['company'], purchase_train: [], split: ['corporation'], assign: ['target', 'target_type'], remove_token: ['city'], discard_train: ['train'] }[h.type] || [];
       return keys.every(function (k) { var x = h[k], y = a[k]; if (k === 'shares') return shareKey(x) === shareKey(y); if (k === 'variant' && (y == null || x === y)) return true; return x == null && y == null || String(x) === String(y); });
     };
     eff.forEach(function (a) {
@@ -617,7 +621,7 @@
       var id = os(hex.$id()), k = '';
       var mine = false; try { mine = truthy(hex['$assigned?']('mine')); } catch (e) {}
       if (ts && !mine) { try { if (truthy(ts.$available_hex(ent, hex)) && arr(ts.$upgradeable_tiles(ent, hex)).length) k += 't'; } catch (e) {} }
-      if (tk) { try { if (truthy(tk.$available_hex(ent, hex)) && tileCities(hex).some(function (c) { try { return truthy(c['$tokenable?'](tokOwner(g, ent))); } catch (e2) { return false; } })) k += 's'; } catch (e) {} }
+      if (tk) { try { if (truthy(tk.$available_hex(ent, hex)) && tileCities(hex).some(function (c) { try { return (truthy(c['$tokenable?'](tokOwner(g, ent))) || (truthy(call(ent, 'company?')) && arr(c.$tokens()).some(function (x) { return nil(x); }))); } catch (e2) { return false; } })) k += 's'; } catch (e) {} }
       if (k) out[id] = k;
     });
     return out;
@@ -647,7 +651,7 @@
       var tk = stepFor(g, ent, 'place_token'), toks = []; try { toks = arr(tk.$available_tokens(ent)); } catch (e) {}
       var owner = null; try { owner = g.$token_owner(ent); } catch (e) {}
       tileCities(hex).forEach(function (c, ci) {
-        try { if (!truthy(c['$tokenable?'](tokOwner(g, ent)))) return; } catch (e) { return; }
+        try { if (!(truthy(c['$tokenable?'](tokOwner(g, ent))) || (truthy(call(ent, 'company?')) && arr(c.$tokens()).some(function (x) { return nil(x); })))) return; } catch (e) { return; }
         var slot = null; try { slot = c.$get_slot(owner || ent); slot = nil(slot) ? null : num(slot); } catch (e) {}
         if (slot == null) { try { slot = arr(c.$tokens()).findIndex(function (x) { return nil(x); }); } catch (e) {} if (slot < 0) slot = 0; }
         var h = { type: 'place_token', entity: ej.entity, entity_type: ej.entity_type, city: os(c.$id()), slot: slot };
