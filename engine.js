@@ -696,7 +696,8 @@
       '<text x="0" y="108" text-anchor="middle" font-size="26" font-weight="600" fill="currentColor">' + esc(os(call(tile, 'name'))) + '</text></svg>';
   }
   // the track and stops of a tile, in a hex of radius 100 (flat orientation); stops can be left out where the board already draws them
-  function trackSvg(tile, withStops) {
+  function trackSvg(tile, withStops, ink) {
+    ink = ink || '#000';
     var R = 86.6, ep = function (e) { var a = e * Math.PI / 3; return [-Math.sin(a) * R, Math.cos(a) * R]; }, f = function (v) { return v.toFixed(1); };
     var paths = arr(call(tile, 'paths'));
     // where each city or town sits: in the middle if it is the only one, otherwise towards its own exits
@@ -725,7 +726,7 @@
       // curves between two edges bend gently towards the middle (a sharp curve stays near its corner)
       if (arr(call(p, 'exits')).length === 2) { var cx = (a[0] + b[0]) / 2 * 0.55, cy = (a[1] + b[1]) / 2 * 0.55; d = 'M' + f(a[0]) + ' ' + f(a[1]) + ' Q' + f(cx) + ' ' + f(cy) + ' ' + f(b[0]) + ' ' + f(b[1]); }
       else d = 'M' + f(a[0]) + ' ' + f(a[1]) + ' L' + f(b[0]) + ' ' + f(b[1]);
-      return '<path d="' + d + '" stroke="#000" fill="none"' + sty + '/>';
+      return '<path d="' + d + '" stroke="' + ink + '" fill="none"' + sty + '/>';
     }).join('');
     var dots = nodes.map(function (n) { return n.city ? '<circle cx="' + f(n.x) + '" cy="' + f(n.y) + '" r="' + (nodes.length > 1 ? 19 : 24) + '" fill="#fff" stroke="#000" stroke-width="4"/>' : (n.town ? '<circle cx="' + f(n.x) + '" cy="' + f(n.y) + '" r="10" fill="#000"/>' : '<circle cx="' + f(n.x) + '" cy="' + f(n.y) + '" r="7" fill="#000"/>'); }).join('');
     return lines + (withStops ? dots : '');
@@ -740,7 +741,7 @@
       var g = qgame(E.J), sc = (u / 100).toFixed(4), tr = [];
       arr(g.$hexes()).forEach(function (hx) {
         var c = P.pos[os(hx.$id())], tl = call(hx, 'tile'); if (!c || !tl || !arr(call(tl, 'paths')).length) return;
-        tr.push('<g transform="translate(' + c[0].toFixed(1) + ',' + c[1].toFixed(1) + ') scale(' + sc + ')' + (flat ? '' : ' rotate(30)') + '" opacity=".9">' + trackSvg(tl, false) + '</g>');
+        tr.push('<g transform="translate(' + c[0].toFixed(1) + ',' + c[1].toFixed(1) + ') scale(' + sc + ')' + (flat ? '' : ' rotate(30)') + '">' + trackSvg(tl, false, E.J && E.J.isDark(w) ? '#e8e6de' : '#1b1b1b') + '</g>');
       });
       var trk = '<g class="trk" pointer-events="none">' + tr.join('') + '</g>', ci = svg.indexOf('<circle');
       // under the board's stops and tokens when possible, so those stay visible
