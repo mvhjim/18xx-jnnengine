@@ -695,11 +695,20 @@
     // where each city or town sits: in the middle if it is the only one, otherwise towards its own exits
     var nodes = arr(call(tile, 'cities')).map(function (c) { return { o: c, city: true }; }).concat(arr(call(tile, 'towns')).map(function (t) { return { o: t, city: false }; }));
     nodes.forEach(function (n) {
-      var ex = []; paths.forEach(function (p) { if (arr(call(p, 'nodes')).indexOf(n.o) >= 0) arr(call(p, 'exits')).forEach(function (e) { ex.push(num(e)); }); });
-      if (nodes.length === 1 || !ex.length) { n.x = 0; n.y = 0; return; }
+      var ex = [], nid = os(call(n.o, 'id'));
+      paths.forEach(function (p) { if (arr(call(p, 'nodes')).some(function (x) { return x === n.o || (nid && os(call(x, 'id')) === nid); })) arr(call(p, 'exits')).forEach(function (e) { ex.push(num(e)); }); });
+      if (!ex.length) arr(call(n.o, 'paths')).forEach(function (p) { arr(call(p, 'exits')).forEach(function (e) { ex.push(num(e)); }); });
+      n.ex = ex;
+    });
+    // an exit every city shares (Chicago's track to the west in 1846) says nothing about where each city sits
+    var shared = nodes.length > 1 ? (nodes[0].ex || []).filter(function (e) { return nodes.every(function (n) { return (n.ex || []).indexOf(e) >= 0; }); }) : [];
+    nodes.forEach(function (n) {
+      var ex = (n.ex || []).filter(function (e) { return shared.indexOf(e) < 0; }); if (!ex.length) ex = n.ex || [];
+      if (nodes.length === 1) { n.x = 0; n.y = 0; return; }
+      if (!ex.length) { var k = nodes.indexOf(n), a0 = k * 2 * Math.PI / nodes.length; n.x = Math.cos(a0) * 40; n.y = Math.sin(a0) * 40; return; }
       var sx = 0, sy = 0; ex.forEach(function (e) { var q = ep(e); sx += q[0]; sy += q[1]; }); n.x = sx / ex.length * 0.5; n.y = sy / ex.length * 0.5;
     });
-    var at = function (o) { for (var i = 0; i < nodes.length; i++) if (nodes[i].o === o) return [nodes[i].x, nodes[i].y]; return [0, 0]; };
+    var at = function (o) { var oid = os(call(o, 'id')); for (var i = 0; i < nodes.length; i++) if (nodes[i].o === o || (oid && os(call(nodes[i].o, 'id')) === oid)) return [nodes[i].x, nodes[i].y]; return [0, 0]; };
     var lines = paths.map(function (p) {
       var ends = arr(call(p, 'exits')).map(function (e) { return ep(num(e)); }).concat(arr(call(p, 'nodes')).map(at));
       var tr = os(call(p, 'track')), sty = tr === 'narrow' ? ' stroke-width="7" stroke-dasharray="14 7"' : tr === 'dual' ? ' stroke-width="13" stroke-dasharray="20 5"' : ' stroke-width="13"';
