@@ -571,7 +571,13 @@
       var acts = []; try { acts = arr(round.$actions_for(x)).map(os).filter(function (a) { return !meta(a); }); } catch (e) {}
       if (!acts.length) return;
       var isCo = truthy(call(x, 'company?')), who = os(call(x, 'name'));
-      moveOptions(g, x, acts.filter(function (a) { return MAPACTS.indexOf(a) < 0; })).forEach(function (o) { if (o.h.type === 'pass') return; o.group = (isCo ? 'Use ' : 'For ') + who + ': ' + o.group; out.push(o); });
+      moveOptions(g, x, acts.filter(function (a) { return MAPACTS.indexOf(a) < 0; })).forEach(function (o) {
+        if (o.h.type === 'pass') return;
+        // a private company "buying" a share is an exchange: the company is given up for the share
+        if (isCo && o.h.type === 'buy_shares' && /^Buy /.test(o.label)) { o.label = 'Exchange ' + who + ' for ' + o.label.replace(/^Buy /, '').replace(/ \(\D?[\d.,]+\)$/, ''); o.group = 'Use ' + who; }
+        else o.group = o.group.indexOf('Use ' + who) === 0 ? o.group : (isCo ? 'Use ' : 'For ') + who + ': ' + o.group;
+        out.push(o);
+      });
       if (acts.some(function (a) { return MAPACTS.indexOf(a) >= 0; })) out.push({ group: (isCo ? 'Use ' : 'For ') + who, label: (isCo ? 'Use ' + who + ' on the map' : 'Show ' + who + '\'s map moves'), h: {}, mapUse: { type: isCo ? 'company' : 'corporation', id: key, key: key } });
     });
     if (E.mapEnt) out.push({ group: 'Map', label: 'Back to the normal map moves', h: {}, mapUse: {} });
