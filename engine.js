@@ -690,19 +690,31 @@
   function tileSvg(tile, rot, layout) {
     try { tile['$rotate!'](rot); } catch (e) {}
     var col = { yellow: '#f2d25a', green: '#6dbb4b', brown: '#c47a45', gray: '#b9b9b9', grey: '#b9b9b9', white: '#f4f1e8', blue: '#7fb2dd' }[os(call(tile, 'color'))] || '#ddd';
-    var E87 = 86.6, ep = function (e) { var a = e * Math.PI / 3; return [(-Math.sin(a) * E87).toFixed(1), (Math.cos(a) * E87).toFixed(1)]; };
-    var lines = [], nodes = [], pts = '100,0 50,86.6 -50,86.6 -100,0 -50,-86.6 50,-86.6';
-    arr(call(tile, 'paths')).forEach(function (p) {
-      var ex = arr(call(p, 'exits')).map(num);
-      if (ex.length >= 2) { var a = ep(ex[0]), b = ep(ex[1]); lines.push('M' + a[0] + ' ' + a[1] + ' Q0 0 ' + b[0] + ' ' + b[1]); }
-      else if (ex.length === 1) { var a2 = ep(ex[0]); lines.push('M' + a2[0] + ' ' + a2[1] + ' L0 0'); }
+    var R = 86.6, ep = function (e) { var a = e * Math.PI / 3; return [-Math.sin(a) * R, Math.cos(a) * R]; }, f = function (v) { return v.toFixed(1); };
+    var pts = '100,0 50,86.6 -50,86.6 -100,0 -50,-86.6 50,-86.6', paths = arr(call(tile, 'paths'));
+    // where each city or town sits: in the middle if it is the only one, otherwise towards its own exits
+    var nodes = arr(call(tile, 'cities')).map(function (c) { return { o: c, city: true }; }).concat(arr(call(tile, 'towns')).map(function (t) { return { o: t, city: false }; }));
+    nodes.forEach(function (n) {
+      var ex = []; paths.forEach(function (p) { if (arr(call(p, 'nodes')).indexOf(n.o) >= 0) arr(call(p, 'exits')).forEach(function (e) { ex.push(num(e)); }); });
+      if (nodes.length === 1 || !ex.length) { n.x = 0; n.y = 0; return; }
+      var sx = 0, sy = 0; ex.forEach(function (e) { var q = ep(e); sx += q[0]; sy += q[1]; }); n.x = sx / ex.length * 0.5; n.y = sy / ex.length * 0.5;
     });
-    arr(call(tile, 'cities')).forEach(function () { nodes.push('<circle r="24" fill="#fff" stroke="#000" stroke-width="4"/>'); });
-    if (!nodes.length) arr(call(tile, 'towns')).forEach(function () { nodes.push('<circle r="11" fill="#000"/>'); });
-    return '<svg viewBox="-110 -100 220 200" width="74" height="68"><g transform="' + (layout === 'pointy' ? 'rotate(30)' : '') + '"><polygon points="' + pts + '" fill="' + col + '" stroke="#555" stroke-width="3"/>' +
-      lines.map(function (l) { return '<path d="' + l + '" stroke="#000" stroke-width="13" fill="none"/>'; }).join('') + nodes.slice(0, 1).join('') + '</g>' +
-      '<text x="-100" y="96" font-size="30" fill="var(--text-secondary)">' + esc(os(call(tile, 'name'))) + '</text></svg>';
+    var at = function (o) { for (var i = 0; i < nodes.length; i++) if (nodes[i].o === o) return [nodes[i].x, nodes[i].y]; return [0, 0]; };
+    var lines = paths.map(function (p) {
+      var ends = arr(call(p, 'exits')).map(function (e) { return ep(num(e)); }).concat(arr(call(p, 'nodes')).map(at));
+      var tr = os(call(p, 'track')), sty = tr === 'narrow' ? ' stroke-width="7" stroke-dasharray="14 7"' : tr === 'dual' ? ' stroke-width="13" stroke-dasharray="20 5"' : ' stroke-width="13"';
+      if (ends.length < 2) { if (!ends.length) return ''; ends.push([0, 0]); }
+      var a = ends[0], b = ends[1], d;
+      // curves between two edges bend gently towards the middle (a sharp curve stays near its corner)
+      if (arr(call(p, 'exits')).length === 2) { var cx = (a[0] + b[0]) / 2 * 0.55, cy = (a[1] + b[1]) / 2 * 0.55; d = 'M' + f(a[0]) + ' ' + f(a[1]) + ' Q' + f(cx) + ' ' + f(cy) + ' ' + f(b[0]) + ' ' + f(b[1]); }
+      else d = 'M' + f(a[0]) + ' ' + f(a[1]) + ' L' + f(b[0]) + ' ' + f(b[1]);
+      return '<path d="' + d + '" stroke="#000" fill="none"' + sty + '/>';
+    }).join('');
+    var dots = nodes.map(function (n) { return n.city ? '<circle cx="' + f(n.x) + '" cy="' + f(n.y) + '" r="' + (nodes.length > 1 ? 19 : 24) + '" fill="#fff" stroke="#000" stroke-width="4"/>' : '<circle cx="' + f(n.x) + '" cy="' + f(n.y) + '" r="10" fill="#000"/>'; }).join('');
+    return '<svg viewBox="-110 -112 220 224" width="74" height="76"><g transform="' + (layout === 'pointy' ? 'rotate(30)' : '') + '"><polygon points="' + pts + '" fill="' + col + '" stroke="#555" stroke-width="3"/>' + lines + dots + '</g>' +
+      '<text x="0" y="108" text-anchor="middle" font-size="26" font-weight="600" fill="currentColor">' + esc(os(call(tile, 'name'))) + '</text></svg>';
   }
+
   // the board with the hexes you can click outlined
   function mapPicker(J, d, targets) {
     var svg = J.boardSvg(d, null, [], 1400), P = J.hexPositions(d, 26), u = 26, flat = P.flat, ov = [];
