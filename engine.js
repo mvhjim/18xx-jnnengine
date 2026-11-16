@@ -439,6 +439,41 @@
   E._moveOptions = moveOptions;
   // for testing: show game id at its first n moves (sending is always off), or null to go back
   E.preview = function (id, n) { E.fixed = id ? { id: id, n: n } : null; E.game = null; E.q = null; return cycle(true); };
+  // ---------- Problem reports (beta) ---------------------------------------------------------------
+  E.errors = E.errors || [];
+  function noteError(where, e) { E.errors.push(new Date().toISOString().slice(11, 19) + ' ' + where + ': ' + String(e && e.message || e).slice(0, 200)); if (E.errors.length > 15) E.errors.shift(); }
+  function problemReport(withGame) {
+    var gm = E.game, g = gm && gm.g, L = [];
+    L.push('JNN-Engine problem report');
+    L.push('JNN-Engine ' + VERSION + ', 18xx-JNNstats ' + (E.J ? E.J.version + ' (API ' + E.J.apiVersion + ')' : '?') + (E.pinned ? ', pinned fallback' : ''));
+    if (gm) {
+      L.push('Title: ' + gm.raw.title + (withGame ? ', game ' + gid : '') + ', ' + gm.raw.actions.length + ' moves, status ' + gm.raw.status);
+      try { L.push('Round: ' + os(g.$round().$name()) + ' ' + os(g.$turn()) + '.' + os(call(g.$round(), 'round_num')) + ', phase ' + os(g.$phase().$name())); } catch (e) {}
+      try { var st = g.$round().$active_step(), ent = curEntity(g); L.push('Step: ' + os(st.$class().$name()) + ', to act: ' + (truthy(call(ent, 'player?')) ? 'a player' : os(call(ent, 'name'))) + ', allowed: ' + arr(g.$round().$actions_for(ent)).map(os).join(' ')); } catch (e) {}
+    }
+    L.push('Sending: ' + (sendOn() ? 'on' : 'off (test mode)') + ', Learning mode: ' + (E.J && E.J.learnLevel() || 'off') + ', privacy: ' + (E.J && E.J.privacyOn() ? 'on' : 'off'));
+    L.push('Browser: ' + navigator.userAgent);
+    L.push('Recent errors: ' + (E.errors.length ? '' : 'none'));
+    E.errors.forEach(function (x) { L.push('  ' + x); });
+    L.push('What happened (please write a line or two):');
+    return L.join('\n');
+  }
+  function reportBox() {
+    var doc = w.document, old = doc.getElementById('cbox'); if (old) old.remove();
+    var box = doc.createElement('div'); box.id = 'cbox'; doc.body.appendChild(box);
+    var fill = function () {
+      var t = problemReport(doc.getElementById('rp-g') && doc.getElementById('rp-g').checked);
+      box.innerHTML = '<div class="cb"><h3>Problem report</h3><p class="note">Player names are left out where possible, but error messages can contain them: read the text before you share it. Add the game number only if you want the reader to open the game.</p>' +
+        '<label class="ack"><input type="checkbox" id="rp-g"> Include the game number</label><textarea id="rp-t" style="width:100%;height:220px;font:12px ui-monospace,monospace">' + esc(t) + '</textarea>' +
+        '<div class="cbb"><button class="pill go" id="rp-c">Copy</button><button class="pill" id="cb-x">Close</button></div></div>';
+      doc.getElementById('cb-x').onclick = function () { box.remove(); };
+      doc.getElementById('rp-g').onchange = function () { var on = this.checked; fill(); doc.getElementById('rp-g').checked = on; doc.getElementById('rp-t').value = problemReport(on); };
+      doc.getElementById('rp-c').onclick = function () { var ta = doc.getElementById('rp-t'), b = this; var done = function () { b.textContent = 'Copied'; };
+        try { w.navigator.clipboard.writeText(ta.value).then(done, function () { ta.select(); doc.execCommand('copy'); done(); }); } catch (e) { ta.select(); try { doc.execCommand('copy'); done(); } catch (e2) {} } };
+    };
+    fill();
+  }
+
   // ---------- Automatic option test (J7) -------------------------------------------------------
   // At sampled positions of a game, try every choice JNN-Engine offers on a copy and check the rules engine accepts it.
   // This finds the opposite mistake to selfTest: offering a move that is not allowed.
@@ -467,11 +502,15 @@
     return new Promise(function (resolve) {
       var i = 0;
       (function next() {
+        // work in slices of about half a second (browsers slow down timers in hidden windows)
+        var until = Date.now() + 500;
+        while (i < jobs.length && Date.now() < until) {
+          var jb = jobs[i++], h = JSON.parse(JSON.stringify(jb.o.h)); if (jb.o.amount) h[jb.o.amount.key] = jb.o.amount.min;
+          res.tried++;
+          try { dryRun(J, jb.text, h); res.ok++; }
+          catch (e) { res.byType[h.type] = (res.byType[h.type] || 0) + 1; if (res.bad.length < 25) res.bad.push({ k: jb.k, label: jb.o.label, err: (e.message || String(e)).slice(0, 160), h: JSON.stringify(h).slice(0, 200) }); }
+        }
         if (i >= jobs.length) { res.ms = Date.now() - t0; resolve(res); return; }
-        var jb = jobs[i++], h = JSON.parse(JSON.stringify(jb.o.h)); if (jb.o.amount) h[jb.o.amount.key] = jb.o.amount.min;
-        res.tried++;
-        try { dryRun(J, jb.text, h); res.ok++; }
-        catch (e) { res.byType[h.type] = (res.byType[h.type] || 0) + 1; if (res.bad.length < 25) res.bad.push({ k: jb.k, label: jb.o.label, err: (e.message || String(e)).slice(0, 160), h: JSON.stringify(h).slice(0, 200) }); }
         setTimeout(next, 0);
       })();
     });
@@ -687,7 +726,7 @@
     var old = doc.getElementById('cbox'); if (old) old.remove();
     var box = doc.createElement('div'); box.id = 'cbox'; box.innerHTML = '<div class="cb"><b>Checking the move on a copy of the game…</b></div>'; doc.body.appendChild(box);
     setTimeout(function () {
-      var r = null, err = null; try { r = dryRun(J, JSON.stringify(E.game.raw), h); } catch (e) { err = e.message || String(e); }
+      var r = null, err = null; try { r = dryRun(J, JSON.stringify(E.game.raw), h); } catch (e) { err = e.message || String(e); noteError('refused ' + h.type, err); }
       var u = pageUser(), sup = SUPPORTED.indexOf(E.game.raw.title) >= 0, pinned = !!(E.game.raw.settings && E.game.raw.settings.pin);
       var mine = r && u && r.actors.indexOf(u.id) >= 0, canSend = !err && !E.fixed && sendOn() && sup && !pinned && mine && E.game.raw.status !== 'finished';
       var why = err ? '' : E.fixed ? 'this is a test preview of an earlier position' : !sup ? 'not a tested title' : pinned ? 'pinned games are not supported' : !sendOn() ? 'test mode is on' : !u ? 'you are not logged in on this page' : !mine ? 'it is not your move (only the player whose turn it is may make it)' : '';
@@ -709,7 +748,7 @@
           var r2 = dryRun(J, text, h); if (r2.actors.indexOf(u.id) < 0) throw new Error('it is no longer your move');
           return postAction(r2.json);
         }).then(function () { box.innerHTML = '<div class="cb"><b>Sent.</b> The window updates in a moment.</div>'; setTimeout(function () { try { box.remove(); } catch (e) {} }, 1500); cycle(true); },
-          function (e) { box.innerHTML = '<div class="cb"><p class="bad">Not sent: ' + esc(e.message || e) + '</p><p class="note">Nothing changed on 18xx.games. You can always make the move on the site.</p><div class="cbb"><button class="pill" id="cb-x2">Close</button></div></div>'; doc.getElementById('cb-x2').onclick = function () { box.remove(); }; cycle(true); });
+          function (e) { noteError('send', e); box.innerHTML = '<div class="cb"><p class="bad">Not sent: ' + esc(e.message || e) + '</p><p class="note">Nothing changed on 18xx.games. You can always make the move on the site.</p><div class="cbb"><button class="pill" id="cb-x2">Close</button></div></div>'; doc.getElementById('cb-x2').onclick = function () { box.remove(); }; cycle(true); });
       };
     }, 30);
   }
@@ -778,7 +817,7 @@
       open.map(function (c) { return '<tr><td style="text-align:left">' + sw(c.color) + esc(c.name) + '</td><td>' + esc(c.president || '–') + '</td><td>' + esc(c.price != null ? m(c.price) : '–') + '</td><td>' + esc(m(c.cash)) + '</td><td>' + esc(c.trains.map(function (x) { return x.name; }).join(', ') || 'none') + '</td></tr>'; }).join('') + '</tbody></table></div></section>');
     h.push('</div></div>');
     h.push('<div class="ft">JNN-Engine ' + VERSION + ' · built on 18xx-JNNstats ' + esc(J.version) + ' (JNN-API ' + esc(J.apiVersion) + ')' + (E.pinned ? ' · using the newest JNN-stats release known to fit this JNN-Engine' : '') +
-      ' · ' + (sup ? 'tested title' : 'title not tested with JNN-Engine yet: moves are never sent') + ' · updated ' + new Date().toLocaleTimeString() + ' · the 18xx.games page is always the place to play if anything here looks wrong.</div>');
+      ' · ' + (sup ? 'tested title' : 'title not tested with JNN-Engine yet: moves are never sent') + ' · updated ' + new Date().toLocaleTimeString() + ' · the 18xx.games page is always the place to play if anything here looks wrong. <button class="lnk" id="jrep">Copy a problem report</button></div>');
     var y = w.scrollY || 0;
     if (!doc.getElementById('jcss')) { doc.head.innerHTML = '<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>JNN-Engine</title><style id="jcss"></style><style id="jcss2"></style>'; }
     doc.title = (myTurn ? '● Your turn · ' : '') + d.title + ' · JNN-Engine';
@@ -790,6 +829,7 @@
       var b = ev.target.closest && ev.target.closest('button.jmv'); if (b) { confirmBox(J, +b.getAttribute('data-i')); return; }
       var hx = ev.target.closest && ev.target.closest('.hx'); if (hx) { showHexOptions(J, hx.getAttribute('data-hex')); return; }
       if (ev.target.id === 'rr-find') { runRoutesUi(J); return; }
+      if (ev.target.id === 'jrep') { reportBox(); return; }
       if (ev.target.id === 'sendsw') {
         if (!sendOn()) {
           if (!w.confirm('Switch sending on?\n\nWhen on, a move you confirm in JNN-Engine is sent to 18xx.games as you, exactly as if you had made it on the site. Every move is checked on a copy of the game first. You can switch it off again at any time.')) return;
@@ -806,7 +846,7 @@
     E.busy = pickStats().then(loadStats).then(function (J) {
       var before = E.game ? E.game.raw.actions.length : -1;
       return load(J).then(function () { if (force || !E.game || E.game.raw.actions.length !== before || !E.drawn) { draw(J); E.drawn = true; } });
-    }).catch(function (e) { status('JNN-Engine could not show this game: ' + (e && e.message || e) + '. You can always play on the 18xx.games page.'); })
+    }).catch(function (e) { noteError('show', e); status('JNN-Engine could not show this game: ' + (e && e.message || e) + '. You can always play on the 18xx.games page.'); })
       .then(function () { E.busy = null; });
     return E.busy;
   }
