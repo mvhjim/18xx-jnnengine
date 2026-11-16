@@ -336,7 +336,7 @@
     if (can('bankrupt')) {
       // only when the rules would accept it (the site lists it in many steps but refuses it unless there is no way to pay)
       try {
-        var sb = g.$round().$step_for(entity, 'bankrupt'), sa = g.$round().$active_step(), okB = !nil(sb) && sb === sa && has(sb, 'process_bankrupt') && /Train|Bankrupt|Cash|Emergency|Crisis|Liquidat/i.test(os(sb.$class().$name()));
+        var sb = g.$round().$step_for(entity, 'bankrupt'), sa = g.$round().$active_step(), okB = !nil(sb) && has(sb, 'process_bankrupt') && /Train|Cash|Emergency|Crisis|Liquidat|Bankrupt/i.test(os(sa.$class().$name()));
         if (okB && has(g, 'can_go_bankrupt?')) { var pl = truthy(call(entity, 'player?')) ? entity : call(entity, 'owner'); okB = truthy(g['$can_go_bankrupt?'](pl, truthy(call(entity, 'corporation?')) ? entity : Opal.nil)); }
         if (okB) add('Last resort', 'Declare bankruptcy', mk('Bankrupt', {}));
       } catch (e) {}
