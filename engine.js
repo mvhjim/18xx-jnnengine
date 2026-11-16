@@ -487,7 +487,18 @@
     });
     return { title: raw.title, moves: n, found: ok, missingByType: byType, missing: miss, replayed: same2 + '/' + checks.length, replayDiffs: diff, notInEngine: unsup };
   }
-  E._moveOptions = moveOptions;
+  E._moveOptions = moveOptions; E._mapTargets = mapTargets; E._hexOptions = hexOptions; E._curEntity = curEntity;
+  // ---------- Working beside JNN-stats -----------------------------------------------------------
+  // When the JNN-stats window is open, JNN-Engine shows only what you need to act; the board, market,
+  // players, companies and explanations are in JNN-stats. Opened alone, it shows everything.
+  function statsWin() { try { var S = window.__xxStats; return S && S.win && !S.win.closed ? S.win : null; } catch (e) { return null; } }
+  function arrange(both) {
+    try {
+      var sc = w.screen || screen, aw = sc.availWidth, ah = sc.availHeight, al = sc.availLeft || 0, at = sc.availTop || 0, half = Math.round(aw / 2);
+      w.resizeTo(half, ah); w.moveTo(al, at);
+      var sw2 = statsWin(); if (both && sw2) { sw2.resizeTo(aw - half, ah); sw2.moveTo(al + half, at); }
+    } catch (e) {}
+  }
   // for testing: show game id at its first n moves (sending is always off), or null to go back
   E.preview = function (id, n) { E.fixed = id ? { id: id, n: n } : null; E.game = null; E.q = null; return cycle(true); };
   // ---------- Problem reports (beta) ---------------------------------------------------------------
@@ -838,7 +849,7 @@
   var CSS_EXTRA = [
     'body{margin:0}header.je{position:sticky;top:0;z-index:5;background:var(--surface-0);border-bottom:1px solid var(--grid);padding:8px 14px}',
     '.je h1{font-size:18px;margin:0 8px 0 0;display:inline}.je .kv{margin-right:12px;font-size:13px}.je .ro{display:inline-block;font-size:11px;padding:2px 8px;border-radius:999px;border:1px solid var(--grid);color:var(--text-secondary);margin-left:6px}table{font-size:inherit}',
-    '.jw{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(300px,1fr);gap:12px;padding:12px}@media (max-width:900px){.jw{grid-template-columns:1fr}.jw>.jcol:last-child{order:-1}}',
+    '.jw{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(300px,1fr);gap:12px;padding:12px}@media (max-width:900px){.jw{grid-template-columns:1fr}.jw>.jcol:last-child{order:-1}}.jw.lean{grid-template-columns:1fr}.jw.lean>.jcol:first-child{display:none}',
     '.jcol{display:flex;flex-direction:column;gap:12px;min-width:0}.jb svg{width:100%;height:auto}',
     '.act{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}.act button{opacity:.6;cursor:not-allowed}',
     '.yt{border:2px solid var(--accent);border-radius:12px}.note{font-size:12px;color:var(--text-secondary)}',
@@ -865,40 +876,46 @@
     var pc = {}; d.players.forEach(function (p) { pc[p.name] = pal[p.idx % pal.length]; });
     var sup = SUPPORTED.indexOf(d.title) >= 0, t = d.live && d.live.turn, acting = t ? (t.entType === 'player' ? t.entity : t.owner) : null, myTurn = !!(me && acting === me);
     var sw = function (c) { return '<i class="sw" style="background:' + esc(c) + '"></i>'; };
+    var lean = E.lean = !!statsWin();
     var h = [];
     h.push('<header class="je"><h1>' + esc(d.title) + '</h1><span class="ro">JNN-Engine</span><span class="ro sendsw' + (sendOn() ? ' on' : '') + '" id="sendsw" title="When on, a move you confirm is sent to 18xx.games. When off (test mode), moves are only checked on a copy.">Sending moves: ' + (sendOn() ? 'on' : 'off (test mode)') + '</span>' + (J.privacyOn() ? '<span class="ro">🕶 private</span>' : '') + '<br>' +
-      '<span class="kv">Round <b>' + esc(d.roundLabel) + '</b></span><span class="kv">Phase <b>' + esc(d.phase) + '</b></span><span class="kv">Bank <b>' + esc(d.primer && d.primer.bankUnlimited ? 'unlimited' : m(d.bank)) + '</b></span>' +
-      (d.nextTrain ? '<span class="kv">Next train <b>' + esc(d.nextTrain.name) + ' ' + esc(m(d.nextTrain.price)) + '</b></span>' : '') +
-      (d.finished ? '<span class="kv"><b>Game over</b></span>' : acting ? '<span class="kv">To act: ' + (pc[acting] ? sw(pc[acting]) : '') + '<b>' + esc(acting) + '</b>' + (t.entType !== 'player' ? ' for ' + esc(t.entity) : '') + (myTurn ? ' · <b style="color:var(--accent)">your turn</b>' : '') + '</span>' : '') + '</header>');
-    if (J.learnLevel()) h.push(String(J.roundBanner(d, me)).replace(/\s*Press ⓘ[\s\S]*?⋯ menu\./, ''));
-    h.push('<div class="jw"><div class="jcol">');
+      (lean ? '<span class="kv">Round <b>' + esc(d.roundLabel) + '</b></span>' : '<span class="kv">Round <b>' + esc(d.roundLabel) + '</b></span><span class="kv">Phase <b>' + esc(d.phase) + '</b></span><span class="kv">Bank <b>' + esc(d.primer && d.primer.bankUnlimited ? 'unlimited' : m(d.bank)) + '</b></span>' +
+      (d.nextTrain ? '<span class="kv">Next train <b>' + esc(d.nextTrain.name) + ' ' + esc(m(d.nextTrain.price)) + '</b></span>' : '')) +
+      (d.finished ? '<span class="kv"><b>Game over</b></span>' : acting ? '<span class="kv">To act: ' + (pc[acting] ? sw(pc[acting]) : '') + '<b>' + esc(acting) + '</b>' + (t.entType !== 'player' ? ' for ' + esc(t.entity) : '') + (myTurn ? ' · <b style="color:var(--accent)">your turn</b>' : '') + '</span>' : '') +
+      (lean ? '<span class="ro" title="JNN-stats is open, so this window shows only what you need to act; the board, market, players and explanations are in JNN-stats.">with JNN-stats</span><button class="pill" id="jarr" title="JNN-Engine on the left half of the screen, JNN-stats on the right">⇆ Arrange side by side</button>' : '') + '</header>');
+    if (J.learnLevel() && !lean) h.push(String(J.roundBanner(d, me)).replace(/\s*Press ⓘ[\s\S]*?⋯ menu\./, ''));
+    h.push('<div class="jw' + (lean ? ' lean' : '') + '"><div class="jcol">');
     // the board
-    h.push('<section class="card wide jb"><h2>Board</h2>' + J.boardSvg(d, null, [], 1400) + '</section>');
-    h.push('<section class="card wide"><h2>Stock market</h2>' + J.marketHtml(d, dark, me, (d.gridHist || []).length - 1, m) + '</section>');
+    if (!lean) {
+      h.push('<section class="card wide jb"><h2>Board</h2>' + J.boardSvg(d, null, [], 1400) + '</section>');
+      h.push('<section class="card wide"><h2>Stock market</h2>' + J.marketHtml(d, dark, me, (d.gridHist || []).length - 1, m) + '</section>');
+    }
     h.push('</div><div class="jcol">');
     // moves now
     if (!d.finished && t) {
       h.push('<section class="card' + (myTurn ? ' yt' : '') + '"><h2>' + (myTurn ? 'Your turn' : 'Now') + '</h2><p class="sub">' + esc(t.entity) + (t.desc ? ': ' + esc(t.desc) : '') + '</p>' + movesHtml(d, t, me, myTurn, sup) + '</section>');
     }
-    // you
-    var P = d.players.slice().sort(function (a, b) { return b.value - a.value; });
-    if (me) {
-      var mp = d.players.filter(function (p) { return p.name === me; })[0], row = (d.holdings && d.holdings.rows || []).filter(function (r) { return r.name === me; })[0];
-      var mine = d.corps.filter(function (c) { return c.president === me && !c.closed; });
-      h.push('<section class="card"><h2>You: ' + esc(me) + '</h2><p class="sub">Cash <b>' + esc(m(mp.cash)) + '</b> · value <b>' + esc(m(mp.value)) + '</b> · certificates <b>' + mp.certs + (mp.certLimit ? ' / ' + mp.certLimit : '') + '</b> · place <b>' + (P.indexOf(mp) + 1) + ' of ' + P.length + '</b></p>' +
-        (row ? '<div class="tw"><table class="tight"><thead><tr><th style="text-align:left">Company</th><th>Share</th><th>Value</th></tr></thead><tbody>' + Object.keys(row.cells).map(function (cn) { var c = row.cells[cn]; return '<tr><td style="text-align:left">' + esc(cn) + (c.pres ? ' ★' : '') + '</td><td>' + c.pct + '%</td><td>' + esc(m(c.val)) + '</td></tr>'; }).join('') + '</tbody></table></div>' : '') +
-        (mine.length ? '<h3 class="rh">Companies you run</h3><div class="tw"><table class="tight"><thead><tr><th style="text-align:left">Company</th><th>Price</th><th>Cash</th><th>Trains</th></tr></thead><tbody>' + mine.map(function (c) { return '<tr><td style="text-align:left">' + sw(c.color) + esc(c.name) + '</td><td>' + esc(c.price != null ? m(c.price) : '–') + '</td><td>' + esc(m(c.cash)) + '</td><td>' + esc(c.trains.map(function (x) { return x.name; }).join(', ') || 'none') + '</td></tr>'; }).join('') + '</tbody></table></div>' : '') + '</section>');
-    } else h.push('<section class="card"><h2>You</h2><p class="sub">Pick your name under <b>I am</b> in the JNN-stats ⋯ menu; JNN-Engine uses the same setting.</p></section>');
-    // the turn explained (Learning mode), after the short cards so the moves stay near the top
-    if (!d.finished && t && J.learnLevel()) E.turnCard = String(J.yourTurnHtml(d, me, m)).replace(/<p[^>]*>Make the move on the 18xx\.games page; this window only explains\.<\/p>/, ''); else E.turnCard = '';
-    // players
-    h.push('<section class="card"><h2>Players</h2><div class="tw"><table class="tight"><thead><tr><th style="text-align:left">Player</th><th>Value</th><th>Cash</th><th>Certs</th></tr></thead><tbody>' +
-      P.map(function (p) { return '<tr' + (p.name === me ? ' class="mine"' : '') + '><td style="text-align:left">' + sw(pc[p.name]) + esc(p.name) + (p.name === acting ? ' ▶' : '') + '</td><td>' + esc(m(p.value)) + '</td><td>' + esc(m(p.cash)) + '</td><td>' + p.certs + '</td></tr>'; }).join('') + '</tbody></table></div></section>');
-    // companies
-    var open = d.corps.filter(function (c) { return !c.closed && c.floated !== false; });
-    if (open.length) h.push('<section class="card"><h2>Companies</h2><div class="tw"><table class="tight"><thead><tr><th style="text-align:left">Company</th><th>President</th><th>Price</th><th>Cash</th><th>Trains</th></tr></thead><tbody>' +
-      open.map(function (c) { return '<tr><td style="text-align:left">' + sw(c.color) + esc(c.name) + '</td><td>' + esc(c.president || '–') + '</td><td>' + esc(c.price != null ? m(c.price) : '–') + '</td><td>' + esc(m(c.cash)) + '</td><td>' + esc(c.trains.map(function (x) { return x.name; }).join(', ') || 'none') + '</td></tr>'; }).join('') + '</tbody></table></div></section>');
-    if (E.turnCard) h.push(E.turnCard);
+    if (!lean) {
+      // you
+      var P = d.players.slice().sort(function (a, b) { return b.value - a.value; });
+      if (me) {
+        var mp = d.players.filter(function (p) { return p.name === me; })[0], row = (d.holdings && d.holdings.rows || []).filter(function (r) { return r.name === me; })[0];
+        var mine = d.corps.filter(function (c) { return c.president === me && !c.closed; });
+        h.push('<section class="card"><h2>You: ' + esc(me) + '</h2><p class="sub">Cash <b>' + esc(m(mp.cash)) + '</b> · value <b>' + esc(m(mp.value)) + '</b> · certificates <b>' + mp.certs + (mp.certLimit ? ' / ' + mp.certLimit : '') + '</b> · place <b>' + (P.indexOf(mp) + 1) + ' of ' + P.length + '</b></p>' +
+          (row ? '<div class="tw"><table class="tight"><thead><tr><th style="text-align:left">Company</th><th>Share</th><th>Value</th></tr></thead><tbody>' + Object.keys(row.cells).map(function (cn) { var c = row.cells[cn]; return '<tr><td style="text-align:left">' + esc(cn) + (c.pres ? ' ★' : '') + '</td><td>' + c.pct + '%</td><td>' + esc(m(c.val)) + '</td></tr>'; }).join('') + '</tbody></table></div>' : '') +
+          (mine.length ? '<h3 class="rh">Companies you run</h3><div class="tw"><table class="tight"><thead><tr><th style="text-align:left">Company</th><th>Price</th><th>Cash</th><th>Trains</th></tr></thead><tbody>' + mine.map(function (c) { return '<tr><td style="text-align:left">' + sw(c.color) + esc(c.name) + '</td><td>' + esc(c.price != null ? m(c.price) : '–') + '</td><td>' + esc(m(c.cash)) + '</td><td>' + esc(c.trains.map(function (x) { return x.name; }).join(', ') || 'none') + '</td></tr>'; }).join('') + '</tbody></table></div>' : '') + '</section>');
+      } else h.push('<section class="card"><h2>You</h2><p class="sub">Pick your name under <b>I am</b> in the JNN-stats ⋯ menu; JNN-Engine uses the same setting.</p></section>');
+      // the turn explained (Learning mode), after the short cards so the moves stay near the top
+      if (!d.finished && t && J.learnLevel()) E.turnCard = String(J.yourTurnHtml(d, me, m)).replace(/<p[^>]*>Make the move on the 18xx\.games page; this window only explains\.<\/p>/, ''); else E.turnCard = '';
+      // players
+      h.push('<section class="card"><h2>Players</h2><div class="tw"><table class="tight"><thead><tr><th style="text-align:left">Player</th><th>Value</th><th>Cash</th><th>Certs</th></tr></thead><tbody>' +
+        P.map(function (p) { return '<tr' + (p.name === me ? ' class="mine"' : '') + '><td style="text-align:left">' + sw(pc[p.name]) + esc(p.name) + (p.name === acting ? ' ▶' : '') + '</td><td>' + esc(m(p.value)) + '</td><td>' + esc(m(p.cash)) + '</td><td>' + p.certs + '</td></tr>'; }).join('') + '</tbody></table></div></section>');
+      // companies
+      var open = d.corps.filter(function (c) { return !c.closed && c.floated !== false; });
+      if (open.length) h.push('<section class="card"><h2>Companies</h2><div class="tw"><table class="tight"><thead><tr><th style="text-align:left">Company</th><th>President</th><th>Price</th><th>Cash</th><th>Trains</th></tr></thead><tbody>' +
+        open.map(function (c) { return '<tr><td style="text-align:left">' + sw(c.color) + esc(c.name) + '</td><td>' + esc(c.president || '–') + '</td><td>' + esc(c.price != null ? m(c.price) : '–') + '</td><td>' + esc(m(c.cash)) + '</td><td>' + esc(c.trains.map(function (x) { return x.name; }).join(', ') || 'none') + '</td></tr>'; }).join('') + '</tbody></table></div></section>');
+      if (E.turnCard) h.push(E.turnCard);
+    }
     h.push('</div></div>');
     h.push('<div class="ft">JNN-Engine ' + VERSION + ' · built on 18xx-JNNstats ' + esc(J.version) + ' (JNN-API ' + esc(J.apiVersion) + ')' + (E.pinned ? ' · using the newest JNN-stats release known to fit this JNN-Engine' : '') +
       ' · ' + (sup ? 'tested title' : 'title not tested with JNN-Engine yet: moves are never sent') + ' · updated ' + new Date().toLocaleTimeString() + ' · the 18xx.games page is always the place to play if anything here looks wrong. <button class="lnk" id="jrep">Copy a problem report</button></div>');
@@ -917,6 +934,7 @@
       var hx = ev.target.closest && ev.target.closest('.hx, .hxchip'); if (hx) { showHexOptions(J, hx.getAttribute('data-hex')); return; }
       if (ev.target.id === 'rr-find') { runRoutesUi(J); return; }
       if (ev.target.id === 'jrep') { reportBox(); return; }
+      if (ev.target.id === 'jarr') { arrange(true); return; }
       if (ev.target.id === 'sendsw') {
         if (!sendOn()) {
           if (!w.confirm('Switch sending on?\n\nWhen on, a move you confirm in JNN-Engine is sent to 18xx.games as you, exactly as if you had made it on the site. Every move is checked on a copy of the game first. You can switch it off again at any time.')) return;
@@ -965,4 +983,14 @@
   }
   subscribe();
   E.timer = setInterval(function () { subscribe(); cycle(false); }, REFRESH_MS);
+  // switch between the lean and the full view when JNN-stats is opened or closed (no network involved)
+  if (E.leanTimer) clearInterval(E.leanTimer);
+  E.leanTimer = setInterval(function () { if (!w || w.closed) { clearInterval(E.leanTimer); return; } if (E.drawn && E.J && !!statsWin() !== !!E.lean) draw(E.J); }, 3000);
+  // the window's place: where you last put it, or the left half of the screen the first time
+  (function () {
+    var key = 'jnnEngine.bounds', b = null; try { b = JSON.parse(localStorage.getItem(key) || 'null'); } catch (e) {}
+    if (!E.placed) { E.placed = true; try { if (b && b.w > 300 && b.h > 300) { w.resizeTo(b.w, b.h); w.moveTo(b.x, b.y); } else arrange(false); } catch (e) {} }
+    if (E.bTimer) clearInterval(E.bTimer);
+    var last = ''; E.bTimer = setInterval(function () { try { if (!w || w.closed) { clearInterval(E.bTimer); return; } var bb = { x: w.screenX, y: w.screenY, w: w.outerWidth, h: w.outerHeight }, k = JSON.stringify(bb); if (k !== last && bb.w > 300 && bb.h > 300) { last = k; localStorage.setItem(key, k); } } catch (e) {} }, 2500);
+  })();
 })();
