@@ -220,7 +220,11 @@
             var price = num(hget(v, 'price')), key = 'd' + os(vn) + price; if (seenT[key]) return;
             // like the site: a train the company cannot pay for is only offered when it must buy one (the president then helps, for the cheapest)
             var bp = null; try { bp = num(g.$buying_power(entity)); } catch (e) {} 
-            if (bp != null && price > bp) { var must = false; try { must = truthy(step['$must_buy_train?'](entity)); } catch (e) {} if (!must || price > cheapest) return; }
+            if (bp != null && price > bp) {
+              var must = false, helps = true; try { must = truthy(step['$must_buy_train?'](entity)); } catch (e) {}
+              try { if (has(step, 'president_may_contribute?')) helps = truthy(step['$president_may_contribute?'](entity)); } catch (e) {}
+              if (!must || !helps || price > cheapest) return;
+            }
             seenT[key] = 1;
             var h = base('buy_train'); h.train = os(t.$id()); h.price = price; h.variant = os(vn);
             var wmax = 0; try { if (has(step, 'warranty_max')) wmax = num(step.$warranty_max()) || 0; } catch (e) {}
@@ -279,7 +283,8 @@
     }
     if (can('assign') && etype === 'company') {
       // a private company's power: assigned to a hex (a bridge, a port, ...) or to a company
-      try { arr(g.$hexes()).forEach(function (hx) { try { if (has(step, 'available_hex') && truthy(step.$available_hex(entity, hx))) add('Use ' + nm(entity), 'Assign ' + nm(entity) + ' to ' + os(hx.$id()) + (os(call(hx, 'location_name')) ? ' (' + os(hx.$location_name()) + ')' : ''), mk('Assign', { target: hx })); } catch (e2) {} }); } catch (e) {}
+      var bridge = /bridge/i.test(nm(entity));
+      try { arr(g.$hexes()).forEach(function (hx) { try { if (bridge && truthy(hx['$assigned?']('bridge'))) return; if (has(step, 'available_hex') && truthy(step.$available_hex(entity, hx))) add('Use ' + nm(entity), 'Assign ' + nm(entity) + ' to ' + os(hx.$id()) + (os(call(hx, 'location_name')) ? ' (' + os(hx.$location_name()) + ')' : ''), mk('Assign', { target: hx })); } catch (e2) {} }); } catch (e) {}
       try { if (has(step, 'assignable_corporations')) arr(step.$assignable_corporations(entity)).forEach(function (c) { add('Use ' + nm(entity), 'Assign ' + nm(entity) + ' to ' + nm(c), mk('Assign', { target: c })); }); } catch (e) {}
     } else if (can('assign')) {
       var tg = []; try { tg = has(step, 'available_subsidiaries') ? arr(step.$available_subsidiaries(entity)) : has(step, 'auctioning_corporation') && !nil(step.$auctioning_corporation()) ? [step.$auctioning_corporation()] : []; } catch (e) {}
@@ -560,6 +565,9 @@
   function entJson(ent) { var id = os(call(ent, 'id')); return { entity: isNaN(+id) ? id : +id, entity_type: truthy(call(ent, 'player?')) ? 'player' : truthy(call(ent, 'corporation?')) ? 'corporation' : truthy(call(ent, 'minor?')) ? 'minor' : 'company' }; }
   function tokConnected(g, ent, c) {
     if (truthy(call(ent, 'company?'))) return true; // special powers can place without a connection; the dry run checks
+    // a home station needs no connection: no station placed yet, or a home-station step
+    try { if (!arr(call(ent, 'tokens')).some(function (t) { return truthy(call(t, 'used')); })) return true; } catch (e) {}
+    try { var st = g.$round().$active_step(); if (/Home/i.test(os(st.$class().$name()))) return true; } catch (e) {}
     try { var nodes = g.$token_graph_for_entity(ent).$connected_nodes(ent); return truthy(nodes['$[]'](c)); } catch (e) { return true; }
   }
   function tokOwner(g, ent) { try { var o = g.$token_owner(ent); return nil(o) ? ent : o; } catch (e) { return ent; } }
@@ -569,7 +577,8 @@
     var out = {}, ts = acts.indexOf('lay_tile') >= 0 ? stepFor(g, ent, 'lay_tile') : null, tk = acts.indexOf('place_token') >= 0 ? stepFor(g, ent, 'place_token') : null;
     arr(g.$hexes()).forEach(function (hex) {
       var id = os(hex.$id()), k = '';
-      if (ts) { try { if (truthy(ts.$available_hex(ent, hex)) && arr(ts.$upgradeable_tiles(ent, hex)).length) k += 't'; } catch (e) {} }
+      var mine = false; try { mine = truthy(hex['$assigned?']('mine')); } catch (e) {}
+      if (ts && !mine) { try { if (truthy(ts.$available_hex(ent, hex)) && arr(ts.$upgradeable_tiles(ent, hex)).length) k += 't'; } catch (e) {} }
       if (tk) { try { if (truthy(tk.$available_hex(ent, hex)) && tileCities(hex).some(function (c) { try { return (truthy(c['$tokenable?'](tokOwner(g, ent))) && tokConnected(g, ent, c)); } catch (e2) { return false; } })) k += 's'; } catch (e) {} }
       if (k) out[id] = k;
     });
