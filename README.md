@@ -2,7 +2,7 @@
 
 A JNN game window for [18xx.games](https://18xx.games): the game drawn the JNN way, in its own window beside the site and beside [18xx-JNNstats](https://github.com/mvhjim/18xx-jnnstats).
 
-**Status: 0.5.0.** Shows the game and can make every move found in the tested titles' finished games: shares, starting companies, bids and auctions, dividends, trains, tiles, stations and routes, private company powers, and title-specific steps (1817 loans, shorts, conversions, mergers and acquisitions; The Old Prince 1871 Union Bank purchases and exchanges). **Sending is off by default:** in test mode every move is checked on a copy of the game and shown, but nothing is sent.
+**Status: 0.6.0 (beta).** Shows the game and can make every move found in the tested titles' finished games: shares, starting companies, bids and auctions, dividends, trains, tiles, stations and routes, private company powers, and title-specific steps (1817 loans, shorts, conversions, mergers and acquisitions; The Old Prince 1871 Union Bank purchases and exchanges). **Sending is off by default:** in test mode every move is checked on a copy of the game and shown, but nothing is sent.
 
 ## Use
 
@@ -35,6 +35,19 @@ JNN-Engine contains no game logic of its own. It loads the released 18xx-JNNstat
 
 1817, 1846, 1862, The Old Prince 1871 and 1849: Kingdom of the Two Sicilies. Other titles are shown, but will stay view only until they are tested.
 
+## Beta
+
+JNN-Engine is in beta. Testers: see the [beta guide](docs/BETA.md). Found a problem? Click **Copy a problem report** at the bottom of the window and send it with a line on what happened.
+
+## Tests
+
+[tests/run.js](tests/run.js) runs two checks on copies of finished games (it only reads, and pauses between games to go easy on the server):
+
+- **Every real move offered:** walks through the game and checks that each move the players made was among JNN-Engine's choices at that moment, and replays a sample both ways to check JNN-Engine's version does exactly the same.
+- **Every choice allowed:** at 8 positions in the game, tries each choice JNN-Engine offers on a copy and checks the rules engine accepts it.
+
+A few choices are offered exactly as on the 18xx.games page but can only be checked when they are made: a tile that adds no new track, a station in a city the company is not connected to, a tile lay that costs more than the company has. JNN-Engine marks the last two in the label, and the confirmation shows the rules' answer before anything is sent.
+
 ## Plan
 
 | Tranche | What |
@@ -44,7 +57,7 @@ JNN-Engine contains no game logic of its own. It loads the released 18xx-JNNstat
 | J4 (0.3) | Map moves: tiles (only legal tiles and rotations), stations, routes (suggested by the site's own auto-router) |
 | J5 (0.4) | Special cases: private company powers, emergency train buys, title-specific steps |
 | J6 (0.5) | Learning built in: explanations beside the buttons and warnings before risky moves |
-| J7 | Automatic tests on copies of real games, then a beta with friends |
+| J7 (0.6) | Automatic tests on copies of real games, then a beta with friends |
 
 ## Security
 

@@ -221,7 +221,7 @@
             var v = vs['$[]'](vn); if (allowed.length && allowed.indexOf(v) < 0) return;
             var price = num(hget(v, 'price')), key = 'd' + os(vn) + price; if (seenT[key]) return;
             // like the site: a train the company cannot pay for is only offered when it must buy one (the president then helps, for the cheapest)
-            var bp = null; try { bp = num(g.$buying_power(entity)); } catch (e) {} 
+            var bp = null; try { bp = num(g.$buying_power(entity)); } catch (e) {} if (bp == null) bp = num(call(entity, 'cash'));
             if (bp != null && price > bp) {
               var must = false, helps = true; try { must = truthy(step['$must_buy_train?'](entity)); } catch (e) {}
               try { if (has(step, 'president_may_contribute?')) helps = truthy(step['$president_may_contribute?'](entity)); } catch (e) {}
@@ -230,6 +230,8 @@
             seenT[key] = 1;
             var h = base('buy_train'); h.train = os(t.$id()); h.price = price; h.variant = os(vn);
             var wmax = 0; try { if (has(step, 'warranty_max')) wmax = num(step.$warranty_max()) || 0; } catch (e) {}
+            var cashNow = num(call(entity, 'cash')), needMore = cashNow != null && price > cashNow && !(function () { try { return truthy(step['$must_buy_train?'](entity)); } catch (e) { return false; } })();
+            if (needMore) { add('Buy a train', 'Buy a ' + os(vn) + ' from the bank (' + money(price) + '; more than its cash, so raise money first, for example with a loan)', h); out[out.length - 1].unsure = true; return; }
             if (wmax > 0) { var wc = 0; try { wc = num(step.$warranty_cost()); } catch (e) {} h.warranties = 0;
               add('Buy a train', 'Buy a ' + os(vn) + ' from the bank (' + money(price) + ') with this many warranties' + (wc ? ' (' + money(wc) + ' each)' : ''), h, { key: 'warranties', min: 0, max: wmax }); }
             else add('Buy a train', 'Buy a ' + os(vn) + ' from the bank (' + money(price) + ')', h);
