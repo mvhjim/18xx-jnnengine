@@ -18,7 +18,7 @@
  */
 (function () {
   'use strict';
-  var VERSION = '0.4.0';
+  var VERSION = '0.5.0';
   var API_MAJOR = '1';                 // the JNN-API major version this code is written for
   var API_MIN = '1.1';                 // the oldest minor version it can use
   var FALLBACK_SHA = 'bfabede';        // a JNN-stats release known to work, used if the latest is incompatible

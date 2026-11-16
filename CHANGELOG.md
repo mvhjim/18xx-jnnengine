@@ -1,6 +1,13 @@
 # Changelog
 All notable changes to this project are listed here. The format follows [Keep a Changelog](https://keepachangelog.com), and versions follow [Semantic Versioning](https://semver.org).
 
+## [0.5.0] - 2026-11-16
+
+### Added
+- **Warnings before risky moves (tranche J6).** The confirmation now lists what a move changes that is easy to miss, worked out by comparing the game before and after the move on a copy: a phase change, trains that rust (and a company left with no train), presidencies that change hands, share prices that rise or fall, a company entering the acquisition or liquidation zone, new loans and the interest they cost, reaching or going over the certificate limit, debt, and your own money paying toward a train. Short and withhold get a short reminder of what they mean.
+- Moves with a ⚠ warning need a tick (*I have read the warnings above*) before *Send* works.
+- **Learning mode** (the JNN-stats setting): a one-line explanation for each kind of move in the *Your turn* card, and JNN-stats' plain-words explanation under each line of what the move will do.
+
 ## [0.4.0] - 2026-11-16
 
 ### Added
