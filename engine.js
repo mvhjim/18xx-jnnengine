@@ -687,11 +687,18 @@
     return out;
   }
   // a small drawing of a tile at a rotation, from the engine's track data (drawn here, not copied from the site)
+  var TILE_COL = { yellow: '#f2d25a', green: '#6dbb4b', brown: '#c47a45', gray: '#b9b9b9', grey: '#b9b9b9', white: '#f4f1e8', blue: '#7fb2dd' };
   function tileSvg(tile, rot, layout) {
     try { tile['$rotate!'](rot); } catch (e) {}
-    var col = { yellow: '#f2d25a', green: '#6dbb4b', brown: '#c47a45', gray: '#b9b9b9', grey: '#b9b9b9', white: '#f4f1e8', blue: '#7fb2dd' }[os(call(tile, 'color'))] || '#ddd';
+    var col = TILE_COL[os(call(tile, 'color'))] || '#ddd';
+    var pts = '100,0 50,86.6 -50,86.6 -100,0 -50,-86.6 50,-86.6';
+    return '<svg viewBox="-110 -112 220 224" width="74" height="76"><g transform="' + (layout === 'pointy' ? 'rotate(30)' : '') + '"><polygon points="' + pts + '" fill="' + col + '" stroke="#555" stroke-width="3"/>' + trackSvg(tile, true) + '</g>' +
+      '<text x="0" y="108" text-anchor="middle" font-size="26" font-weight="600" fill="currentColor">' + esc(os(call(tile, 'name'))) + '</text></svg>';
+  }
+  // the track and stops of a tile, in a hex of radius 100 (flat orientation); stops can be left out where the board already draws them
+  function trackSvg(tile, withStops) {
     var R = 86.6, ep = function (e) { var a = e * Math.PI / 3; return [-Math.sin(a) * R, Math.cos(a) * R]; }, f = function (v) { return v.toFixed(1); };
-    var pts = '100,0 50,86.6 -50,86.6 -100,0 -50,-86.6 50,-86.6', paths = arr(call(tile, 'paths'));
+    var paths = arr(call(tile, 'paths'));
     // where each city or town sits: in the middle if it is the only one, otherwise towards its own exits
     var allN = arr(call(tile, 'nodes')); if (!allN.length) allN = arr(call(tile, 'cities')).concat(arr(call(tile, 'towns')));
     var nodes = allN.map(function (n) { return { o: n, city: truthy(call(n, 'city?')), town: truthy(call(n, 'town?')) }; });
@@ -721,14 +728,24 @@
       return '<path d="' + d + '" stroke="#000" fill="none"' + sty + '/>';
     }).join('');
     var dots = nodes.map(function (n) { return n.city ? '<circle cx="' + f(n.x) + '" cy="' + f(n.y) + '" r="' + (nodes.length > 1 ? 19 : 24) + '" fill="#fff" stroke="#000" stroke-width="4"/>' : (n.town ? '<circle cx="' + f(n.x) + '" cy="' + f(n.y) + '" r="10" fill="#000"/>' : '<circle cx="' + f(n.x) + '" cy="' + f(n.y) + '" r="7" fill="#000"/>'); }).join('');
-    return '<svg viewBox="-110 -112 220 224" width="74" height="76"><g transform="' + (layout === 'pointy' ? 'rotate(30)' : '') + '"><polygon points="' + pts + '" fill="' + col + '" stroke="#555" stroke-width="3"/>' + lines + dots + '</g>' +
-      '<text x="0" y="108" text-anchor="middle" font-size="26" font-weight="600" fill="currentColor">' + esc(os(call(tile, 'name'))) + '</text></svg>';
+    return lines + (withStops ? dots : '');
   }
 
   // the board with the hexes you can click outlined
   function mapPicker(J, d, targets) {
     var svg = J.boardSvg(d, null, [], 1400), P = J.hexPositions(d, 26), u = 26, flat = P.flat, ov = [];
     var poly = function (cx, cy, r) { var q = []; for (var a = 0; a < 6; a++) { var rad = ((flat ? 0 : 30) + a * 60) * Math.PI / 180; q.push((cx + r * Math.cos(rad)).toFixed(1) + ',' + (cy + r * Math.sin(rad)).toFixed(1)); } return q.join(' '); };
+    // the track already on the board, so you can see what a new tile connects to
+    try {
+      var g = qgame(E.J), sc = (u / 100).toFixed(4), tr = [];
+      arr(g.$hexes()).forEach(function (hx) {
+        var c = P.pos[os(hx.$id())], tl = call(hx, 'tile'); if (!c || !tl || !arr(call(tl, 'paths')).length) return;
+        tr.push('<g transform="translate(' + c[0].toFixed(1) + ',' + c[1].toFixed(1) + ') scale(' + sc + ')' + (flat ? '' : ' rotate(30)') + '" opacity=".9">' + trackSvg(tl, false) + '</g>');
+      });
+      var trk = '<g class="trk" pointer-events="none">' + tr.join('') + '</g>', ci = svg.indexOf('<circle');
+      // under the board's stops and tokens when possible, so those stay visible
+      if (ci > 0) svg = svg.slice(0, ci) + trk + svg.slice(ci); else ov.push(trk);
+    } catch (e) {}
     Object.keys(targets).forEach(function (id) { var c = P.pos[id]; if (!c) return; ov.push('<polygon class="hx' + (E.selHex === id ? ' sel' : '') + '" data-hex="' + esc(id) + '" data-k="' + targets[id] + '" points="' + poly(c[0], c[1], u - 2) + '"><title>' + esc(id + (targets[id].indexOf('t') >= 0 ? ': tile' : '') + (targets[id].indexOf('s') >= 0 ? ': station' : '')) + '</title></polygon>'); });
     return svg.replace(/<\/svg>\s*$/, ov.join('') + '</svg>');
   }
