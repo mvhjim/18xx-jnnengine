@@ -107,7 +107,7 @@
   function arr(o) { if (nil(o)) return []; if (Array.isArray(o)) return o; if (has(o, 'to_a')) return o.$to_a(); return []; }
   function num(o) { var v = nil(o) ? null : Number(o); return v == null || isNaN(v) ? null : v; }
   function hget(h, k) { if (nil(h)) return null; try { var v = h['$[]'](k); if (nil(v) && Opal.Symbol) v = null; return nil(v) ? null : v; } catch (e) { return null; } }
-  var SENDABLE = ['pass', 'bid', 'par', 'buy_shares', 'sell_shares', 'dividend', 'buy_train', 'take_loan', 'payoff_loan', 'short', 'convert', 'merge', 'choose', 'assign', 'remove_token', 'discard_train'];
+  var SENDABLE = ['pass', 'bid', 'par', 'buy_shares', 'sell_shares', 'dividend', 'buy_train', 'take_loan', 'payoff_loan', 'short', 'convert', 'merge', 'choose', 'assign', 'remove_token', 'discard_train', 'offer', 'split'];
   // the options for one entity in the current step; each is { group, label, h: action JSON (without id), amount?: {min, max, key} }
   function moveOptions(g, entity, acts) {
     var out = [], round = g.$round(), active = round.$active_step(), step = active, id = os(call(entity, 'id')), etype = truthy(call(entity, 'player?')) ? 'player' : truthy(call(entity, 'corporation?')) ? 'corporation' : truthy(call(entity, 'minor?')) ? 'minor' : call(entity, 'company?') ? 'company' : 'player';
@@ -277,12 +277,22 @@
       var mname = 'Merge'; try { if (has(step, 'merge_name')) mname = os(step.$merge_name(entity)) || mname; } catch (e) {}
       targets.forEach(function (t) { try { var key = truthy(call(t, 'minor?')) ? 'minor' : 'corporation', o = {}; o[key] = t; add(mname, (/^acquire$/i.test(mname) && !nil(subj) && subj !== entity ? nm(t) + ' acquires ' + nm(subj) : mname + ' with ' + nm(t)), mk('Merge', o)); } catch (e) {} });
     }
+    if (can('offer')) {
+      // The Old Prince 1871: put a private company up for auction
+      var oc = []; try { oc = arr(has(step, 'companies') ? step.$companies() : has(step, 'available') ? step.$available() : []); } catch (e) {}
+      oc.forEach(function (co) { try { add('Offer a company', 'Put ' + nm(co) + ' up for auction (value ' + money(num(call(co, 'value'))) + ')', mk('Offer', { company: co })); } catch (e) {} });
+    }
+    if (can('split')) {
+      g.$corporations().forEach(function (c) { try { if (truthy(g['$can_split?'](c, entity))) add('Split a company', 'Split ' + nm(c) + ' into two companies', mk('Split', { corporation: c })); } catch (e) {} });
+    }
     if (can('choose')) {
       try {
         var ch = step.$choices(), cname = has(step, 'choice_name') ? os(step.$choice_name()) : 'Choose';
-        if (has(step, 'choice_is_amount?') && truthy(step['$choice_is_amount?']())) { var mm = arr(ch); add(cname, cname, Object.assign(mk('Choose', { choice: mm[0] }), {}), { key: 'choice', min: num(mm[0]), max: num(mm[1]) }); }
-        else if (has(ch, 'keys')) arr(ch.$keys()).forEach(function (k) { add(cname || 'Choose', os(ch['$[]'](k)) || os(k), mk('Choose', { choice: k })); });
-        else arr(ch).forEach(function (k) { add(cname || 'Choose', os(k), mk('Choose', { choice: k })); });
+        var ctg = null; try { if (has(step, 'selected_corporation')) { ctg = step.$selected_corporation(); if (nil(ctg)) ctg = null; } } catch (e) {}
+        var mkC = function (v) { return mk('Choose', ctg ? { choice: v, target: ctg } : { choice: v }); };
+        if (has(step, 'choice_is_amount?') && truthy(step['$choice_is_amount?']())) { var mm = arr(ch); add(cname, cname, mkC(mm[0]), { key: 'choice', min: num(mm[0]), max: num(mm[1]) }); }
+        else if (has(ch, 'keys')) arr(ch.$keys()).forEach(function (k) { add(cname || 'Choose', os(ch['$[]'](k)) || os(k), mkC(k)); });
+        else arr(ch).forEach(function (k) { add(cname || 'Choose', os(k), mkC(k)); });
       } catch (e) {}
     }
     if (can('assign') && etype === 'company') {
@@ -387,7 +397,9 @@
     choose: 'The rules need a choice from you here.',
     assign: 'Assigning puts a private company (or its power) to use.',
     remove_token: 'After a merger a company may have too many stations; choose which to give up.',
-    discard_train: 'The company has more trains than it may keep; choose one to give up.'
+    discard_train: 'The company has more trains than it may keep; choose one to give up.',
+    offer: 'Offering puts a private company up for auction; the other players bid on it.',
+    split: 'Splitting divides a big company into two; you then choose how.'
   };
   function pageUser() {
     try {
@@ -415,7 +427,7 @@
       if (o && o.amount) { var v = a[o.amount.key]; if (v == null || +v < o.amount.min || +v > o.amount.max) return false; h = JSON.parse(JSON.stringify(h)); h[o.amount.key] = v; }
       if (h.type !== a.type || String(h.entity) !== String(a.entity)) return false;
       var keys = { buy_shares: ['shares', 'purchase_for'], sell_shares: ['shares'], par: ['corporation', 'share_price'], dividend: ['kind'], buy_train: ['train', 'variant'], bid: ['company', 'minor', 'corporation'], pass: [],
-        take_loan: [], payoff_loan: [], short: ['corporation'], convert: [], merge: ['corporation', 'minor'], choose: ['choice'], assign: ['target', 'target_type'], remove_token: ['city'], discard_train: ['train'] }[h.type] || [];
+        take_loan: [], payoff_loan: [], short: ['corporation'], convert: [], merge: ['corporation', 'minor'], choose: ['choice', 'target'], offer: ['company'], split: ['corporation'], assign: ['target', 'target_type'], remove_token: ['city'], discard_train: ['train'] }[h.type] || [];
       return keys.every(function (k) { var x = h[k], y = a[k]; if (k === 'shares') return shareKey(x) === shareKey(y); if (k === 'variant' && (y == null || x === y)) return true; return x == null && y == null || String(x) === String(y); });
     };
     eff.forEach(function (a) {
