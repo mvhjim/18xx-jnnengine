@@ -906,7 +906,7 @@
           (mine.length ? '<h3 class="rh">Companies you run</h3><div class="tw"><table class="tight"><thead><tr><th style="text-align:left">Company</th><th>Price</th><th>Cash</th><th>Trains</th></tr></thead><tbody>' + mine.map(function (c) { return '<tr><td style="text-align:left">' + sw(c.color) + esc(c.name) + '</td><td>' + esc(c.price != null ? m(c.price) : '–') + '</td><td>' + esc(m(c.cash)) + '</td><td>' + esc(c.trains.map(function (x) { return x.name; }).join(', ') || 'none') + '</td></tr>'; }).join('') + '</tbody></table></div>' : '') + '</section>');
       } else h.push('<section class="card"><h2>You</h2><p class="sub">Pick your name under <b>I am</b> in the JNN-stats ⋯ menu; JNN-Engine uses the same setting.</p></section>');
       // the turn explained (Learning mode), after the short cards so the moves stay near the top
-      if (!d.finished && t && J.learnLevel()) E.turnCard = String(J.yourTurnHtml(d, me, m)).replace(/<p[^>]*>Make the move on the 18xx\.games page; this window only explains\.<\/p>/, ''); else E.turnCard = '';
+      if (!d.finished && t && J.learnLevel()) E.turnCard = String(J.yourTurnHtml(d, me, m)).replace(/<p[^>]*>Make the move [^<]*<\/p>/, ''); else E.turnCard = '';
       // players
       h.push('<section class="card"><h2>Players</h2><div class="tw"><table class="tight"><thead><tr><th style="text-align:left">Player</th><th>Value</th><th>Cash</th><th>Certs</th></tr></thead><tbody>' +
         P.map(function (p) { return '<tr' + (p.name === me ? ' class="mine"' : '') + '><td style="text-align:left">' + sw(pc[p.name]) + esc(p.name) + (p.name === acting ? ' ▶' : '') + '</td><td>' + esc(m(p.value)) + '</td><td>' + esc(m(p.cash)) + '</td><td>' + p.certs + '</td></tr>'; }).join('') + '</tbody></table></div></section>');
