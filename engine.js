@@ -418,7 +418,7 @@
   // Self-test: walk through a finished game and check that every move of a supported kind was among the options offered
   function selfTest(J, text) {
     var raw = JSON.parse(text), eff = J.effectiveActions(raw), j0 = JSON.parse(text); j0.actions = []; j0.status = 'active'; delete j0.result;
-    var g = J.loadGame(JSON.stringify(j0)), ok = 0, miss = [], n = 0, byType = {}, checks = [], k = -1;
+    var g = J.loadGame(JSON.stringify(j0)), ok = 0, miss = [], n = 0, byType = {}, checks = [], k = -1, unsup = {};
     // two moves are the same if they buy or sell the same size of share of the same company from the same place,
     // even when the engine picks a different certificate number
     var shareKey = function (ids) { return (ids || []).map(function (id) { try { var sh = g.$share_by_id(id), own = sh.$owner(); return os(sh.$corporation().$id()) + ':' + num(sh.$percent()) + ':' + (own === g.$share_pool() ? 'm' : own === sh.$corporation() ? 'i' : 'o'); } catch (e) { return id; } }).sort().join(','); };
@@ -431,6 +431,7 @@
     };
     eff.forEach(function (a) {
       k++;
+      if (SENDABLE.indexOf(a.type) < 0 && MAPACTS.indexOf(a.type) < 0 && ['undo', 'redo', 'message', 'end_game', 'log'].indexOf(a.type) < 0 && !/^program_/.test(a.type)) unsup[a.type] = (unsup[a.type] || 0) + 1;
       if (a.type === 'lay_tile' || a.type === 'place_token') {
         n++;
         try { var why = mapCheck(g, g.$get(a.entity_type, a.entity), a); if (!why) ok++; else { byType[a.type] = (byType[a.type] || 0) + 1; if (miss.length < 12) miss.push(a.id + ' ' + a.type + ' ' + why + ' ' + JSON.stringify(a).slice(0, 120)); } }
@@ -454,7 +455,7 @@
       try { var r1 = dryRun(J, t2, c.h), r2 = dryRun(J, t2, real); if (JSON.stringify(r1.log) === JSON.stringify(r2.log)) same2++; else diff.push(c.a.id + ': ' + r1.log.join(' / ') + ' ≠ ' + r2.log.join(' / ')); }
       catch (e) { diff.push(c.a.id + ': ' + e.message); }
     });
-    return { title: raw.title, moves: n, found: ok, missingByType: byType, missing: miss, replayed: same2 + '/' + checks.length, replayDiffs: diff };
+    return { title: raw.title, moves: n, found: ok, missingByType: byType, missing: miss, replayed: same2 + '/' + checks.length, replayDiffs: diff, notInEngine: unsup };
   }
   E._moveOptions = moveOptions;
   // for testing: show game id at its first n moves (sending is always off), or null to go back

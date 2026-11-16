@@ -33,6 +33,7 @@
         row.moves = x.self.found + '/' + x.self.moves;
         row.missing = Object.keys(x.self.missingByType).map(function (k) { return k + ' ' + x.self.missingByType[k]; }).join(', ') || '-';
         row.replay = x.self.replayed;
+        row.notInEngine = Object.keys(x.self.notInEngine || {}).map(function (k) { return k + ' ' + x.self.notInEngine[k]; }).join(', ') || '-';
         row.choices = x.options.ok + '/' + (x.options.tried - (x.options.late || 0)) + ' at ' + x.options.positions + ' positions' + (x.options.late ? ' (+' + x.options.late + ' refused only at the final check, as on the site: tiles without new track or too dear, stations without a connection)' : '');
         row.refused = Object.keys(x.options.byType).map(function (k) { return k + ' ' + x.options.byType[k]; }).join(', ') || '-';
         row.ok = x.self.found === x.self.moves && x.options.ok === x.options.tried - (x.options.late || 0) && !x.self.replayDiffs.length;
